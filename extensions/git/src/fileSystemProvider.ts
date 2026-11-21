@@ -182,10 +182,27 @@ export class GitFileSystemProvider implements FileSystemProvider {
 		return EmptyDisposable;
 	}
 
+	private async getReviewRepository(root: string, filePath: string, ref: string): Promise<Repository> {
+		const repository = this.model.repositories.find(repository => pathEquals(repository.root, root));
+		if (!repository || !isDescendant(repository.root, filePath) || (ref !== '' && ref !== 'HEAD')) {
+			throw FileSystemError.FileNotFound();
+		}
+		if (!await workspace.isResourceTrusted(Uri.file(repository.root))) {
+			throw FileSystemError.NoPermissions();
+		}
+		return repository;
+	}
+
 	async stat(uri: Uri): Promise<FileStat> {
 		await this.model.isInitialized;
 
-		const { submoduleOf, path, ref } = fromGitUri(uri);
+		const { submoduleOf, path, ref, reviewRoot } = fromGitUri(uri);
+		if (reviewRoot) {
+			const repository = await this.getReviewRepository(reviewRoot, path, ref);
+			const { mode, size } = await repository.getObjectDetails(ref, path, true);
+			const type = mode === '120000' ? FileType.SymbolicLink : mode.startsWith('100') ? FileType.File : FileType.Unknown;
+			return { type, size, mtime: this.mtime, ctime: 0 };
+		}
 
 		const repository = submoduleOf
 			? await this.getOrOpenRepository(submoduleOf)
@@ -223,7 +240,12 @@ export class GitFileSystemProvider implements FileSystemProvider {
 	async readFile(uri: Uri): Promise<Uint8Array> {
 		await this.model.isInitialized;
 
-		const { path, ref, submoduleOf } = fromGitUri(uri);
+		const { path, ref, submoduleOf, reviewRoot } = fromGitUri(uri);
+		if (reviewRoot) {
+			const repository = await this.getReviewRepository(reviewRoot, path, ref);
+			this.cache.set(uri.toString(), { uri, timestamp: Date.now() });
+			return repository.buffer(ref, path, true);
+		}
 
 		if (submoduleOf) {
 			const repository = await this.getOrOpenRepository(submoduleOf);

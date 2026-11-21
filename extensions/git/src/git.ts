@@ -1630,9 +1630,9 @@ export class Repository {
 			.filter(entry => !!entry);
 	}
 
-	async buffer(ref: string, filePath: string): Promise<Buffer> {
+	async buffer(ref: string, filePath: string, raw = false): Promise<Buffer> {
 		const relativePath = this.sanitizeRelativePath(filePath);
-		const child = this.stream(['show', '--textconv', `${ref}:${relativePath}`]);
+		const child = this.stream(['show', raw ? '--no-textconv' : '--textconv', `${ref}:${relativePath}`], raw ? { env: { GIT_NO_LAZY_FETCH: '1' } } : undefined);
 
 		if (!child.stdout) {
 			return Promise.reject<Buffer>('Can\'t open file from git');
@@ -1656,9 +1656,9 @@ export class Repository {
 		return stdout;
 	}
 
-	async getObjectDetails(treeish: string, path: string): Promise<{ mode: string; object: string; size: number }> {
+	async getObjectDetails(treeish: string, path: string, localOnly = false): Promise<{ mode: string; object: string; size: number }> {
 		if (!treeish || treeish === ':1' || treeish === ':2' || treeish === ':3') { // index
-			const elements = await this.lsfiles(path);
+			const elements = await this.lsfiles(path, localOnly);
 
 			if (elements.length === 0) {
 				throw new GitError({ message: 'Path not known by git', gitErrorCode: GitErrorCodes.UnknownPath });
@@ -1668,13 +1668,13 @@ export class Repository {
 				? elements.find(e => e.stage === treeish.substring(1)) ?? elements[0]
 				: elements[0];
 
-			const catFile = await this.exec(['cat-file', '-s', object]);
+			const catFile = await this.exec(['cat-file', '-s', object], localOnly ? { env: { GIT_NO_LAZY_FETCH: '1' } } : undefined);
 			const size = parseInt(catFile.stdout);
 
 			return { mode, object, size };
 		}
 
-		const elements = await this.lstree(treeish, path);
+		const elements = await this.lstree(treeish, path, { localOnly });
 
 		if (elements.length === 0) {
 			throw new GitError({ message: 'Path not known by git', gitErrorCode: GitErrorCodes.UnknownPath });
@@ -1684,8 +1684,8 @@ export class Repository {
 		return { mode, object, size: parseInt(size) || 0 };
 	}
 
-	async lstree(treeish: string, path?: string, options?: { recursive?: boolean }): Promise<LsTreeElement[]> {
-		const args = ['ls-tree', '-l'];
+	async lstree(treeish: string, path?: string, options?: { recursive?: boolean; localOnly?: boolean }): Promise<LsTreeElement[]> {
+		const args = options?.localOnly ? ['--literal-pathspecs', 'ls-tree', '-l'] : ['ls-tree', '-l'];
 
 		if (options?.recursive) {
 			args.push('-r');
@@ -1697,12 +1697,12 @@ export class Repository {
 			args.push('--', this.sanitizeRelativePath(path));
 		}
 
-		const { stdout } = await this.exec(args);
+		const { stdout } = await this.exec(args, options?.localOnly ? { env: { GIT_NO_LAZY_FETCH: '1' } } : undefined);
 		return parseLsTree(stdout);
 	}
 
-	async lsfiles(path: string): Promise<LsFilesElement[]> {
-		const args = ['ls-files', '--stage'];
+	async lsfiles(path: string, literalPath = false): Promise<LsFilesElement[]> {
+		const args = literalPath ? ['--literal-pathspecs', 'ls-files', '--stage'] : ['ls-files', '--stage'];
 		const relativePath = this.sanitizeRelativePath(path);
 
 		if (relativePath) {

@@ -835,6 +835,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 			capabilities: this.capabilities,
 			shellIntegrationNonce: this._processManager.shellIntegrationNonce,
 			disableShellIntegrationReporting,
+			fontOverride: this._shellLaunchConfig.fontOverride,
 		}, this.onDidExecuteText);
 		this.xterm = xterm;
 		this._resizeDebouncer = this._register(new TerminalResizeDebouncer(
@@ -2105,8 +2106,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
 			this.xterm.raw.options.lineHeight = font.lineHeight;
 			this.xterm.raw.options.fontSize = font.fontSize;
 			this.xterm.raw.options.fontFamily = font.fontFamily;
-			this.xterm.raw.options.fontWeight = config.fontWeight;
-			this.xterm.raw.options.fontWeightBold = config.fontWeightBold;
+			this.xterm.raw.options.fontWeight = this._shellLaunchConfig.fontOverride?.fontWeight ?? config.fontWeight;
+			this.xterm.raw.options.fontWeightBold = this._shellLaunchConfig.fontOverride?.fontWeightBold ?? config.fontWeightBold;
 
 			// Any of the above setting changes could have changed the dimensions of the
 			// terminal, re-evaluate now.

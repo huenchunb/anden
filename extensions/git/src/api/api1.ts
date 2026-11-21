@@ -13,6 +13,7 @@ import { toGitUri } from '../uri';
 import { GitExtensionImpl } from './extension';
 import { GitBaseApi } from '../git-base';
 import { PickRemoteSourceOptions } from '../typings/git-base';
+import { registerAndenReviewCommands } from './andenReview';
 import { OperationKind, OperationResult } from '../operation';
 import { CloneManager } from '../cloneManager';
 
@@ -582,7 +583,7 @@ function getStatus(status: Status): string {
 }
 
 export function registerAPICommands(extension: GitExtensionImpl): Disposable {
-	const disposables: Disposable[] = [];
+	const disposables: Disposable[] = [registerAndenReviewCommands(extension)];
 
 	disposables.push(commands.registerCommand('git.api.getRepositories', () => {
 		const api = extension.getAPI(1);

@@ -8,7 +8,8 @@ import TelemetryReporter from '@vscode/extension-telemetry';
 import { IRepositoryResolver, Repository, RepositoryState } from './repository';
 import { memoize, sequentialize, debounce } from './decorators';
 import { dispose, anyEvent, filterEvent, isDescendant, Limiter, pathEquals, PendingOperations, toDisposable, eventToPromise } from './util';
-import { Git } from './git';
+import { Git, GitError } from './git';
+import { GitErrorCodes } from './api/git.constants';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fromGitUri } from './uri';
@@ -712,7 +713,34 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 	 * @param isWarm Whether the repository opens hidden, as a warm repository of a location that a folder switched to.
 	 */
 	@sequentialize
-	async openRepository(repoPath: string, openIfClosed = false, openIfParent = false, isWarm = false): Promise<void> {
+	async openSessionRepository(folder: Uri): Promise<Repository | 'notRepository' | 'unsafe' | 'untrusted' | 'unavailable'> {
+		if (!await workspace.isResourceTrusted(folder)) {
+			return 'untrusted';
+		}
+		const result = await this.getRepositoryRoot(folder.fsPath).catch((error: unknown) => {
+			if (error instanceof GitError && error.gitErrorCode === GitErrorCodes.NotAGitRepository) {
+				return undefined;
+			}
+			throw error;
+		});
+		if (!result) {
+			return 'notRepository';
+		}
+		if (result.unsafeRepositoryMatch) {
+			return 'unsafe';
+		}
+		const root = Uri.file(result.repositoryRoot);
+		const dotGit = await this.git.getRepositoryDotGit(root.fsPath);
+		for (const uri of [root, Uri.file(path.dirname(dotGit.commonPath ?? dotGit.path))]) {
+			if (!await workspace.requestResourceTrust({ uri })) {
+				return 'untrusted';
+			}
+		}
+		await this.openRepository(root.fsPath, false, true, false, true);
+		return await this.getRepositoryExact(root.fsPath) ?? 'unavailable';
+	}
+
+	async openRepository(repoPath: string, openIfClosed = false, openIfParent = false, isWarm = false, localOnly = false): Promise<void> {
 		this.logger.trace(`[Model][openRepository] Repository: ${repoPath}`);
 		const existingRepository = await this.getRepositoryExact(repoPath);
 		if (existingRepository) {
@@ -800,9 +828,9 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 
 			// Open repository
 			const gitRepository = this.git.open(repositoryRoot, repositoryRootRealPath, dotGit, this.logger);
-			const repository = new Repository(gitRepository, this, this, this, this, this, this, this.globalState, this.logger, this.telemetryReporter, this._repositoryCache, isWarm);
+			const repository = new Repository(gitRepository, this, this, this, this, this, this, this.globalState, this.logger, this.telemetryReporter, this._repositoryCache, isWarm, localOnly);
 
-			this.open(repository);
+			this.open(repository, localOnly);
 			this._closedRepositoriesManager.deleteRepository(repository.root);
 
 			this.logger.info(`[Model][openRepository] Opened repository (path): ${repository.root}`);
@@ -873,7 +901,7 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 		return false;
 	}
 
-	private open(repository: Repository): void {
+	private open(repository: Repository, localOnly: boolean): void {
 		this.logger.trace(`[Model][open] Repository: ${repository.root}`);
 
 		const onDidDisappearRepository = filterEvent(repository.onDidChangeState, state => state === RepositoryState.Disposed);
@@ -899,7 +927,7 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 			.get<number>('detectWorktreesLimit') as number;
 
 		const checkForSubmodules = () => {
-			if (!shouldDetectSubmodules) {
+			if (localOnly || !shouldDetectSubmodules) {
 				this.logger.trace('[Model][open] Automatic detection of git submodules is not enabled.');
 				return;
 			}
@@ -919,7 +947,7 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 		};
 
 		const checkForWorktrees = () => {
-			if (!shouldDetectWorktrees) {
+			if (localOnly || !shouldDetectWorktrees) {
 				this.logger.trace('[Model][open] Automatic detection of git worktrees is not enabled.');
 				return;
 			}

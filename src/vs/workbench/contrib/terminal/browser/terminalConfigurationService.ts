@@ -12,7 +12,7 @@ import { ITerminalConfigurationService, LinuxDistro } from './terminal.js';
 import type { IXtermCore } from './xterm-private.js';
 import { DEFAULT_BOLD_FONT_WEIGHT, DEFAULT_COMMANDS_TO_SKIP_SHELL, DEFAULT_FONT_WEIGHT, DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT, FontWeight, ITerminalConfiguration, MAXIMUM_FONT_WEIGHT, MINIMUM_FONT_WEIGHT, MINIMUM_LETTER_SPACING, TERMINAL_CONFIG_SECTION, type ITerminalFont } from '../common/terminal.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
-import { TerminalLocation, TerminalLocationConfigValue } from '../../../../platform/terminal/common/terminal.js';
+import { ITerminalFontOverride, TerminalLocation, TerminalLocationConfigValue } from '../../../../platform/terminal/common/terminal.js';
 import { isString } from '../../../../base/common/types.js';
 import { clamp } from '../../../../base/common/numbers.js';
 
@@ -53,7 +53,7 @@ export class TerminalConfigurationService extends Disposable implements ITermina
 
 	setPanelContainer(panelContainer: HTMLElement): void { return this._fontMetrics.setPanelContainer(panelContainer); }
 	configFontIsMonospace(): boolean { return this._fontMetrics.configFontIsMonospace(); }
-	getFont(w: Window, xtermCore?: IXtermCore, excludeDimensions?: boolean): ITerminalFont { return this._fontMetrics.getFont(w, xtermCore, excludeDimensions); }
+	getFont(w: Window, xtermCore?: IXtermCore, excludeDimensions?: boolean, override?: ITerminalFontOverride): ITerminalFont { return this._fontMetrics.getFont(w, xtermCore, excludeDimensions, override); }
 	shouldCommandSkipShell(commandId: string): boolean { return this._skipTerminalCommands.has(commandId); }
 
 	private _updateConfig(): void {
@@ -129,14 +129,14 @@ export class TerminalFontMetrics extends Disposable {
 	 * Gets the font information based on the terminal.integrated.fontFamily
 	 * terminal.integrated.fontSize, terminal.integrated.lineHeight configuration properties
 	 */
-	getFont(w: Window, xtermCore?: IXtermCore, excludeDimensions?: boolean): ITerminalFont {
+	getFont(w: Window, xtermCore?: IXtermCore, excludeDimensions?: boolean, override?: ITerminalFontOverride): ITerminalFont {
 		const editorConfig = this._configurationService.getValue<IEditorOptions>('editor');
 
-		let fontFamily = this._terminalConfigurationService.config.fontFamily || editorConfig.fontFamily || EDITOR_FONT_DEFAULTS.fontFamily || 'monospace';
-		let fontSize = clampInt(this._terminalConfigurationService.config.fontSize, FontConstants.MinimumFontSize, FontConstants.MaximumFontSize, EDITOR_FONT_DEFAULTS.fontSize);
+		let fontFamily = override?.fontFamily || this._terminalConfigurationService.config.fontFamily || editorConfig.fontFamily || EDITOR_FONT_DEFAULTS.fontFamily || 'monospace';
+		let fontSize = clampInt(override?.fontSize ?? this._terminalConfigurationService.config.fontSize, FontConstants.MinimumFontSize, FontConstants.MaximumFontSize, EDITOR_FONT_DEFAULTS.fontSize);
 
 		// Work around bad font on Fedora/Ubuntu
-		if (!this._terminalConfigurationService.config.fontFamily) {
+		if (!override && !this._terminalConfigurationService.config.fontFamily) {
 			if (this.linuxDistro === LinuxDistro.Fedora) {
 				fontFamily = '\'DejaVu Sans Mono\'';
 			}
@@ -186,7 +186,7 @@ export class TerminalFontMetrics extends Disposable {
 		}
 
 		// Fall back to measuring the font ourselves
-		return this._measureFont(w, fontFamily, fontSize, letterSpacing, lineHeight);
+		return this._measureFont(w, fontFamily, fontSize, letterSpacing, lineHeight, override?.fontWeight);
 	}
 
 	private _createCharMeasureElementIfNecessary(): HTMLElement {
@@ -201,7 +201,7 @@ export class TerminalFontMetrics extends Disposable {
 		return this._charMeasureElement;
 	}
 
-	private _getBoundingRectFor(char: string, fontFamily: string, fontSize: number): ClientRect | DOMRect | undefined {
+	private _getBoundingRectFor(char: string, fontFamily: string, fontSize: number, fontWeight?: number): ClientRect | DOMRect | undefined {
 		let charMeasureElement: HTMLElement;
 		try {
 			charMeasureElement = this._createCharMeasureElementIfNecessary();
@@ -212,6 +212,7 @@ export class TerminalFontMetrics extends Disposable {
 		style.display = 'inline-block';
 		style.fontFamily = fontFamily;
 		style.fontSize = fontSize + 'px';
+		style.fontWeight = fontWeight === undefined ? '' : String(fontWeight);
 		style.lineHeight = 'normal';
 		charMeasureElement.innerText = char;
 		const rect = charMeasureElement.getBoundingClientRect();
@@ -220,8 +221,8 @@ export class TerminalFontMetrics extends Disposable {
 		return rect;
 	}
 
-	private _measureFont(w: Window, fontFamily: string, fontSize: number, letterSpacing: number, lineHeight: number): ITerminalFont {
-		const rect = this._getBoundingRectFor('X', fontFamily, fontSize);
+	private _measureFont(w: Window, fontFamily: string, fontSize: number, letterSpacing: number, lineHeight: number, fontWeight?: number): ITerminalFont {
+		const rect = this._getBoundingRectFor('X', fontFamily, fontSize, fontWeight);
 
 		// Bounding client rect was invalid, use last font measurement if available.
 		if (this._lastFontMeasurement && (!rect || !rect.width || !rect.height)) {

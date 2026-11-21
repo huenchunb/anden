@@ -12,7 +12,7 @@ pnpm run build-fast
 
 If an executable is not found on the shell PATH, add `anden.pi.executablePath` or `anden.codex.executablePath` to the profile's `User/settings.json`. Use an absolute path to a directly executable file. Anden doesn't install the CLIs, sign in for you, or send prompts.
 
-Sessions use the existing integrated terminal engine but are not editor tabs or bottom-panel terminals. They are transient: closing or reloading the window does not restore them. The IDE and GitHub views are not part of this window yet.
+Sessions use the existing integrated terminal engine but are not editor tabs or bottom-panel terminals. They are transient: closing or reloading the window does not restore them. **Changes** opens a read-only view of the session’s Git working copy without stopping its terminal. The list compares HEAD to the index for staged files and the index to files on disk for unstaged files. Two sessions in the same repository see the same Git changes. Use **Refresh** if a change has not appeared yet and **Back to Terminal** to return to the running agent. The full IDE and GitHub views are not part of this window yet.
 
 On macOS, the main window keeps the native window buttons in the Sessions header and uses the noninteractive areas of the header to move the window. Native tabs or simple fullscreen retain the standard system title bar for compatibility.
 
@@ -30,8 +30,8 @@ pyftsubset 'GoogleSans[GRAD,opsz,wght].ttf' \
   --layout-features='*'
 ```
 
-## Terminal font
+## Code and terminal font
 
-The default terminal font for both agents is **Agave Nerd Font Mono**, 14 px, with xterm's normal weight set to 500 and bold weight to 700. The bundled faces are Regular (400) and Bold (700); xterm requests the configured weight as it would in VS Code. The standard `terminal.integrated.font*` settings can override these defaults.
+Anden’s diff and agent terminal surfaces use **Agave Nerd Font Mono**, 14 px, at weight 500 (700 for ANSI bold). The bundled faces are Regular (400) and Bold (700). These surfaces use the Anden font even if the profile specifies another font for VS Code’s standard editor or terminal; the profile itself is not changed.
 
 The two `anden-agave-nerd-font-mono-*.woff2` assets in `browser/media` come from `AgaveNerdFontMono-{Regular,Bold}.ttf` in the [Nerd Fonts v3.5.1 Agave archive](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Agave.tar.xz). They were converted with FontTools 4.62.1 and Brotli 1.2.0 (`TTFont` with `recalcTimestamp=False`, saved with `flavor='woff2'`) without subsetting so the Nerd Font icons remain available. The distribution includes the [OFL license](../../../../../licenses/agave-nerd-font-OFL.txt) and [upstream glyph notices](../../../../../licenses/agave-nerd-font-notices.md).

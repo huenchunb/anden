@@ -17,7 +17,7 @@ import { IXtermCore } from '../xterm-private.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../../../base/common/lifecycle.js';
 import { IEditorOptions } from '../../../../../editor/common/config/editorOptions.js';
-import { IShellIntegration, ITerminalLogService, TerminalSettingId, type IDecorationAddon } from '../../../../../platform/terminal/common/terminal.js';
+import { IShellIntegration, ITerminalFontOverride, ITerminalLogService, TerminalSettingId, type IDecorationAddon } from '../../../../../platform/terminal/common/terminal.js';
 import { ITerminalFont, ITerminalConfiguration } from '../../common/terminal.js';
 import { IMarkTracker, IInternalXtermTerminal, IXtermTerminal, IXtermColorProvider, XtermTerminalConstants, IXtermAttachToElementOptions, IDetachedXtermTerminal, ITerminalConfigurationService } from '../terminal.js';
 import { LogLevel } from '../../../../../platform/log/common/log.js';
@@ -86,6 +86,8 @@ function getFullBufferLineAsString(lineIndex: number, buffer: IBuffer): { lineDa
 }
 
 export interface IXtermTerminalOptions {
+	/** Font for xterm surfaces that do not use profile typography. */
+	fontOverride?: ITerminalFontOverride;
 	/** The columns to initialize the terminal with. */
 	cols: number;
 	/** The rows to initialize the terminal with. */
@@ -205,6 +207,8 @@ export class XtermTerminal extends Disposable implements IXtermTerminal, IDetach
 		return createImageBitmap(canvas);
 	}
 
+	private readonly _fontOverride: ITerminalFontOverride | undefined;
+
 	public get isFocused() {
 		if (!this.raw.element) {
 			return false;
@@ -236,13 +240,14 @@ export class XtermTerminal extends Disposable implements IXtermTerminal, IDetach
 	) {
 		super();
 
+		this._fontOverride = options.fontOverride;
 		this._xtermAddonLoader = options.xtermAddonImporter ?? new XtermAddonImporter();
 		this._xtermColorProvider = options.xtermColorProvider;
 		this._capabilities = options.capabilities;
 		this._disableOverviewRuler = options.disableOverviewRuler ?? false;
 		this._scrollback = options.scrollback;
 
-		const font = this._terminalConfigurationService.getFont(dom.getActiveWindow(), undefined, true);
+		const font = this._terminalConfigurationService.getFont(dom.getActiveWindow(), undefined, true, options.fontOverride);
 		const config = this._terminalConfigurationService.config;
 		const editorOptions = this._configurationService.getValue<IEditorOptions>('editor');
 
@@ -256,8 +261,8 @@ export class XtermTerminal extends Disposable implements IXtermTerminal, IDetach
 			theme: this.getXtermTheme(),
 			drawBoldTextInBrightColors: config.drawBoldTextInBrightColors,
 			fontFamily: font.fontFamily,
-			fontWeight: config.fontWeight,
-			fontWeightBold: config.fontWeightBold,
+			fontWeight: options.fontOverride?.fontWeight ?? config.fontWeight,
+			fontWeightBold: options.fontOverride?.fontWeightBold ?? config.fontWeightBold,
 			fontSize: font.fontSize,
 			letterSpacing: font.letterSpacing,
 			lineHeight: font.lineHeight,
@@ -728,7 +733,7 @@ export class XtermTerminal extends Disposable implements IXtermTerminal, IDetach
 	}
 
 	getFont(): ITerminalFont {
-		return this._terminalConfigurationService.getFont(dom.getWindow(this.raw.element), this._core);
+		return this._terminalConfigurationService.getFont(dom.getWindow(this.raw.element), this._core, false, this._fontOverride);
 	}
 
 	setBufferLineWrapped(lineIndex: number, isWrapped: boolean): void {

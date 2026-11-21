@@ -103,6 +103,17 @@ suite('Workbench - TerminalConfigurationService', () => {
 			ok(terminalConfigurationService.getFont(getActiveWindow()).fontFamily.startsWith('bar'), 'terminal.integrated.fontFamily should be selected over editor.fontFamily');
 		});
 
+		test('an embedded font override does not change profile typography', () => {
+			const service = createTerminalConfigationService({ terminal: { integrated: { fontFamily: 'Profile Font', fontSize: 20 } } });
+			const override = { fontFamily: 'Embedded Mono', fontSize: 14, fontWeight: 500, fontWeightBold: 700 };
+			const embeddedFont = service.getFont(getActiveWindow(), undefined, true, override);
+			ok(embeddedFont.fontFamily.startsWith('Embedded Mono, monospace'));
+			strictEqual(embeddedFont.fontSize, 14);
+			const profileFont = service.getFont(getActiveWindow(), undefined, true);
+			ok(profileFont.fontFamily.startsWith('Profile Font, monospace'));
+			strictEqual(profileFont.fontSize, 20);
+		});
+
 		test('fontFamily (Linux Fedora)', () => {
 			const terminalConfigurationService = createTerminalConfigationService({
 				editor: { fontFamily: 'foo' },

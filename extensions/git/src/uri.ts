@@ -11,6 +11,7 @@ export interface GitUriParams {
 	path: string;
 	ref: string;
 	submoduleOf?: string;
+	reviewRoot?: string;
 }
 
 export function isGitUri(uri: Uri): boolean {
@@ -25,6 +26,7 @@ export interface GitUriOptions {
 	scheme?: string;
 	replaceFileExtension?: boolean;
 	submoduleOf?: string;
+	reviewRoot?: string;
 }
 
 // As a mitigation for extensions like ESLint showing warnings and errors
@@ -38,6 +40,10 @@ export function toGitUri(uri: Uri, ref: string, options: GitUriOptions = {}): Ur
 
 	if (options.submoduleOf) {
 		params.submoduleOf = options.submoduleOf;
+	}
+
+	if (options.reviewRoot) {
+		params.reviewRoot = options.reviewRoot;
 	}
 
 	let path = uri.path;

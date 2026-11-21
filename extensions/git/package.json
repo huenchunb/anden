@@ -52,6 +52,7 @@
   "activationEvents": [
     "*",
     "onEditSession:file",
+    "onCommand:_git.anden.openReview",
     "onFileSystem:git",
     "onFileSystem:git-show"
   ],

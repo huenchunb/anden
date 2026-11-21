@@ -505,7 +505,17 @@ export interface IHeartbeatService {
 
 export const remoteResolverTerminal = Symbol('remoteResolverTerminal');
 
+export interface ITerminalFontOverride {
+	readonly fontFamily: string;
+	readonly fontSize: number;
+	readonly fontWeight: number;
+	readonly fontWeightBold: number;
+}
+
 export interface IShellLaunchConfig {
+	/** Optional renderer font for a terminal embedded in a dedicated surface. */
+	fontOverride?: ITerminalFontOverride;
+
 	/**
 	 * The name of the terminal, if this is not set the name of the process will be used.
 	 */

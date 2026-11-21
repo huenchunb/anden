@@ -20,6 +20,7 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { KeybindingWeight, KeybindingsRegistry } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
@@ -33,6 +34,8 @@ import { IWorkspaceTrustRequestService } from '../../../../platform/workspace/co
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { ITerminalInstance, ITerminalInstanceService, ITerminalService } from '../../terminal/browser/terminal.js';
 import { SessionList } from '../common/sessionList.js';
+import { AndenRepositoryReview, IAndenReviewState } from './andenRepositoryReview.js';
+import { andenCodeFont, loadAndenCodeFont } from './andenTypography.js';
 import './media/andenWorkbench.css';
 
 const agents = [
@@ -42,10 +45,6 @@ const agents = [
 type Agent = typeof agents[number];
 
 const switchSessionCommand = 'anden.switchSession';
-const terminalFontFamily = 'Agave Nerd Font Mono';
-const terminalFontSize = 14;
-const terminalFontWeight = 500;
-const terminalFontWeightBold = 700;
 
 if (product.andenSessionWorkbench) {
 	KeybindingsRegistry.registerKeybindingRule({
@@ -65,10 +64,10 @@ if (product.andenSessionWorkbench) {
 			'onboarding.enabled': false,
 			'workbench.startupEditor': 'none',
 			'window.title': 'Anden',
-			[TerminalSettingId.FontFamily]: terminalFontFamily,
-			[TerminalSettingId.FontSize]: terminalFontSize,
-			[TerminalSettingId.FontWeight]: terminalFontWeight,
-			[TerminalSettingId.FontWeightBold]: terminalFontWeightBold,
+			[TerminalSettingId.FontFamily]: andenCodeFont.fontFamily,
+			[TerminalSettingId.FontSize]: andenCodeFont.fontSize,
+			[TerminalSettingId.FontWeight]: andenCodeFont.fontWeight,
+			[TerminalSettingId.FontWeightBold]: andenCodeFont.fontWeightBold,
 		},
 	}]);
 }
@@ -80,6 +79,9 @@ interface Session {
 	readonly surface: HTMLElement;
 	readonly selectButton: HTMLButtonElement;
 	readonly disposables: DisposableStore;
+	readonly review: IAndenReviewState;
+	showReview: boolean;
+	changeCount?: number;
 }
 
 /** Owns the session navigation and terminal surfaces for one Anden desktop window. */
@@ -88,11 +90,13 @@ export class AndenWorkbench extends Disposable {
 	private readonly counts = new Map<Agent['id'], number>();
 	private readonly list: HTMLElement;
 	private readonly content: HTMLElement;
+	private readonly header: HTMLElement;
 	private readonly heading: HTMLElement;
 	private readonly folderLabel: HTMLElement;
 	private readonly empty: HTMLElement;
 	private readonly newButton: HTMLButtonElement;
-	private terminalFontLoad: Promise<unknown> | undefined;
+	private readonly review: AndenRepositoryReview;
+	private readonly changesButton: HTMLButtonElement;
 	private creating = false;
 
 	private get selected(): Session | undefined {
@@ -113,6 +117,7 @@ export class AndenWorkbench extends Disposable {
 		@INotificationService private readonly notifications: INotificationService,
 		@IWorkbenchEnvironmentService private readonly environment: IWorkbenchEnvironmentService,
 		@INativeHostService private readonly nativeHost: INativeHostService,
+		@IInstantiationService instantiation: IInstantiationService,
 	) {
 		super();
 		const root = $('div.anden-workbench');
@@ -126,10 +131,21 @@ export class AndenWorkbench extends Disposable {
 		this.list = append(sidebar, $('ul.anden-session-list'));
 
 		const main = append(root, $('main.anden-main', { 'aria-label': localize('activeSession', "Active Session") }));
-		const header = append(main, $('header.anden-session-header'));
-		this.heading = append(header, $('h2'));
-		this.folderLabel = append(header, $('div.anden-folder'));
+		this.header = append(main, $('header.anden-session-header'));
+		const description = append(this.header, $('div.anden-session-description'));
+		this.heading = append(description, $('h2'));
+		this.folderLabel = append(description, $('div.anden-folder'));
+		this.changesButton = append(this.header, $<HTMLButtonElement>('button.anden-changes-button', { type: 'button' }));
+		this.changesButton.onclick = () => this.toggleReview();
 		this.content = append(main, $('div.anden-session-content'));
+		const reviewContainer = append(this.content, $('div.anden-review'));
+		reviewContainer.hidden = true;
+		this.review = this._register(instantiation.createInstance(AndenRepositoryReview, reviewContainer, count => {
+			if (this.selected?.showReview) {
+				this.selected.changeCount = count;
+				this.updateChangesButton();
+			}
+		}));
 		this.empty = append(this.content, $('div.anden-empty'));
 		append(this.empty, $('h2', {}, localize('noSession', "No open session")));
 		append(this.empty, $('p', {}, localize('startSession', "Start Pi or Codex in a folder of your choice.")));
@@ -151,7 +167,9 @@ export class AndenWorkbench extends Disposable {
 	}
 
 	focus(): void {
-		if (this.selected) {
+		if (this.selected?.showReview) {
+			this.review.focus();
+		} else if (this.selected) {
 			this.selected.terminal.focus(true);
 		} else {
 			this.newButton.focus();
@@ -218,14 +236,14 @@ export class AndenWorkbench extends Disposable {
 				this.notifications.error(localize('missingExecutable', "Could not find an executable for {0}. Install it or set {1} to an absolute executable path in User Settings.", agent.label, `anden.${agent.id}.executablePath`));
 				return;
 			}
-			await this.loadTerminalFont();
+			await loadAndenCodeFont(this.content.ownerDocument);
 			if (this._store.isDisposed) {
 				return;
 			}
 			const count = (this.counts.get(agent.id) ?? 0) + 1;
 			const label = localize('sessionName', "{0} · {1}", agent.label, count);
 			const terminal = await this.terminals.createTerminal({
-				config: { executable, args: [], cwd: folder, name: label, hideFromUser: true, isTransient: true, useShellEnvironment: true },
+				config: { executable, args: [], cwd: folder, name: label, hideFromUser: true, isTransient: true, useShellEnvironment: true, fontOverride: andenCodeFont },
 				location: TerminalLocation.Panel,
 			});
 			if (this._store.isDisposed) {
@@ -239,21 +257,6 @@ export class AndenWorkbench extends Disposable {
 		} finally {
 			this.creating = false;
 		}
-	}
-
-	private async loadTerminalFont(): Promise<void> {
-		const families = this.configuration.getValue<string>(TerminalSettingId.FontFamily);
-		if (!families?.split(',').some(family => family.trim().replace(/^(['"])(.*)\1$/, '$2').toLowerCase() === terminalFontFamily.toLowerCase())) {
-			return;
-		}
-
-		// Load both faces before xterm measures its cells or populates the glyph atlas.
-		// A missing face must not prevent a session from launching with the fallback font.
-		const { fonts } = this.content.ownerDocument;
-		await (this.terminalFontLoad ??= Promise.allSettled([
-			fonts.load(`${terminalFontWeight} ${terminalFontSize}px "${terminalFontFamily}"`),
-			fonts.load(`${terminalFontWeightBold} ${terminalFontSize}px "${terminalFontFamily}"`),
-		]));
 	}
 
 	private async pickFolder(): Promise<URI | undefined> {
@@ -293,7 +296,7 @@ export class AndenWorkbench extends Disposable {
 		const closeButton = append(row, $('button.anden-session-close', { type: 'button', 'aria-label': localize('closeSession', "Close {0}", label) }, '×'));
 		const surface = append(this.content, $('div.anden-terminal'));
 		const disposables = new DisposableStore();
-		const session: Session = { terminal, label, folder, surface, selectButton, disposables };
+		const session: Session = { terminal, label, folder, surface, selectButton, disposables, review: { folder }, showReview: false };
 		this.sessions.add(session);
 		disposables.add({ dispose: () => { surface.remove(); row.remove(); } });
 		disposables.add(terminal.onDisposed(() => this.removeSession(session)));
@@ -334,18 +337,38 @@ export class AndenWorkbench extends Disposable {
 	private renderSelection(): void {
 		for (const session of this.sessions.values()) {
 			const active = session === this.selected;
-			session.surface.hidden = !active;
-			session.terminal.setVisible(active);
+			const terminalVisible = active && !session.showReview;
+			session.surface.hidden = !terminalVisible;
+			session.terminal.setVisible(terminalVisible);
 			session.selectButton.setAttribute('aria-current', String(active));
 		}
 		this.empty.hidden = !!this.selected;
-		this.heading.parentElement!.hidden = !this.selected;
+		this.header.hidden = !this.selected;
 		this.heading.textContent = this.selected?.label ?? '';
 		this.folderLabel.textContent = this.selected?.folder.fsPath ?? '';
+		this.updateChangesButton();
+		this.review.show(this.selected?.showReview ? this.selected.review : undefined);
+	}
+
+	private toggleReview(): void {
+		if (!this.selected) {
+			return;
+		}
+		this.selected.showReview = !this.selected.showReview;
+		this.renderSelection();
+		this.layoutSession();
+		this.focus();
+	}
+
+	private updateChangesButton(): void {
+		const session = this.selected;
+		this.changesButton.textContent = session?.showReview
+			? localize('backToTerminal', 'Back to Terminal')
+			: session?.changeCount === undefined ? localize('changes', 'Changes') : localize('changesCount', 'Changes · {0}', session.changeCount);
 	}
 
 	private layoutSession(): void {
-		if (this.selected) {
+		if (this.selected && !this.selected.showReview) {
 			this.selected.terminal.layout({ width: this.content.clientWidth, height: this.content.clientHeight });
 		}
 	}

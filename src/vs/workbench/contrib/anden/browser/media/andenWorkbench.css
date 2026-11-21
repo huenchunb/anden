@@ -102,7 +102,7 @@
 	-webkit-app-region: drag;
 }
 
-.anden-integrated-titlebar .anden-sidebar-header button {
+.anden-integrated-titlebar :is(.anden-sidebar-header button, .anden-changes-button) {
 	-webkit-app-region: no-drag;
 }
 
@@ -113,7 +113,7 @@
 	margin: 0;
 }
 
-.anden-workbench button {
+.anden-workbench button:not(:where(.anden-review-editor button)) {
 	appearance: none;
 	border: 1px solid transparent;
 	border-radius: 4px;
@@ -123,7 +123,7 @@
 	cursor: pointer;
 }
 
-.anden-workbench button:focus-visible {
+.anden-workbench button:not(:where(.anden-review-editor button)):focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
 	outline-offset: -1px;
 }
@@ -212,6 +212,116 @@
 	overflow: hidden;
 	/* xterm sets its own glyph font; preserve the inherited font for its auxiliary DOM. */
 	font-family: var(--workbench-system-font-family);
+}
+
+.anden-workbench .anden-session-header:not([hidden]) {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.anden-workbench .anden-session-description {
+	min-width: 0;
+}
+
+.anden-workbench :is(button.anden-changes-button, .anden-review-toolbar button) {
+	flex-shrink: 0;
+	padding: 4px 8px;
+	border-color: var(--vscode-widget-border, transparent);
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.anden-workbench .anden-review:not([hidden]) {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--vscode-editor-background);
+}
+
+.anden-review-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 16px;
+}
+
+.anden-review-status {
+	padding: 0 16px 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.anden-review-body {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 23%) minmax(0, 1fr);
+	border-top: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.anden-review-files {
+	overflow: auto;
+	background: var(--vscode-sideBar-background);
+	border-right: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.anden-review-files h3 {
+	margin: 0;
+	padding: 8px;
+	font-size: 12px;
+}
+
+.anden-review-files ul {
+	list-style: none;
+	margin: 0;
+	padding: 0 4px 4px;
+}
+
+.anden-review-files button {
+	width: 100%;
+	padding: 4px 6px;
+	text-align: left;
+}
+
+.anden-review-files button:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.anden-review-files button[aria-current='true'] {
+	color: var(--vscode-list-activeSelectionForeground);
+	background: var(--vscode-list-activeSelectionBackground);
+}
+
+.anden-review-files :is(.anden-review-path, .anden-review-kind) {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.anden-review-files .anden-review-kind {
+	font-size: 11px;
+	opacity: 0.8;
+}
+
+.anden-review-preview {
+	position: relative;
+	min-width: 0;
+	min-height: 0;
+}
+
+.anden-review-message:not(:empty) {
+	padding: 12px;
+}
+
+.anden-review-editor {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
 }
 
 .anden-workbench .anden-terminal .terminal-wrapper {

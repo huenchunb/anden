@@ -957,7 +957,8 @@ export class Repository implements Disposable {
 		private readonly logger: LogOutputChannel,
 		private telemetryReporter: TelemetryReporter,
 		private readonly repositoryCache: RepositoryCache,
-		isWarm = false
+		isWarm = false,
+		private readonly localOnly = false
 	) {
 		this._isWarm = isWarm;
 		this.disposables.push(this._onDidChangeWarm);
@@ -1100,15 +1101,17 @@ export class Repository implements Disposable {
 		this.disposables.push(this.workingTreeGroup);
 		this.disposables.push(this.untrackedGroup);
 
-		// Don't allow auto-fetch in untrusted workspaces
-		if (workspace.isTrusted) {
-			this.disposables.push(new AutoFetcher(this, globalState));
-		} else {
-			const trustDisposable = workspace.onDidGrantWorkspaceTrust(() => {
-				trustDisposable.dispose();
+		// Only regular SCM repositories may auto-fetch, and only in trusted workspaces.
+		if (!localOnly) {
+			if (workspace.isTrusted) {
 				this.disposables.push(new AutoFetcher(this, globalState));
-			});
-			this.disposables.push(trustDisposable);
+			} else {
+				const trustDisposable = workspace.onDidGrantWorkspaceTrust(() => {
+					trustDisposable.dispose();
+					this.disposables.push(new AutoFetcher(this, globalState));
+				});
+				this.disposables.push(trustDisposable);
+			}
 		}
 
 		// https://github.com/microsoft/vscode/issues/39039
@@ -1838,14 +1841,18 @@ export class Repository implements Disposable {
 		}
 
 		if (branchFromReflogUpstream) {
-			await this.setConfig(mergeBaseConfigKey, `${branchFromReflogUpstream.remote}/${branchFromReflogUpstream.name}`);
+			if (!this.localOnly) {
+				await this.setConfig(mergeBaseConfigKey, `${branchFromReflogUpstream.remote}/${branchFromReflogUpstream.name}`);
+			}
 			return branchFromReflogUpstream;
 		}
 
 		// Default branch
 		const defaultBranch = await this.getDefaultBranch();
 		if (defaultBranch) {
-			await this.setConfig(mergeBaseConfigKey, `${defaultBranch.remote}/${defaultBranch.name}`);
+			if (!this.localOnly) {
+				await this.setConfig(mergeBaseConfigKey, `${defaultBranch.remote}/${defaultBranch.name}`);
+			}
 			return defaultBranch;
 		}
 
@@ -2708,16 +2715,16 @@ export class Repository implements Disposable {
 		});
 	}
 
-	async buffer(ref: string, filePath: string): Promise<Buffer> {
-		return this.run(Operation.Show, () => this.repository.buffer(ref, filePath));
+	async buffer(ref: string, filePath: string, raw = false): Promise<Buffer> {
+		return this.run(Operation.Show, () => this.repository.buffer(ref, filePath, raw));
 	}
 
 	getObjectFiles(ref: string): Promise<LsTreeElement[]> {
 		return this.run(Operation.GetObjectFiles, () => this.repository.lstree(ref));
 	}
 
-	getObjectDetails(ref: string, path: string): Promise<{ mode: string; object: string; size: number }> {
-		return this.run(Operation.GetObjectDetails, () => this.repository.getObjectDetails(ref, path));
+	getObjectDetails(ref: string, path: string, localOnly = false): Promise<{ mode: string; object: string; size: number }> {
+		return this.run(Operation.GetObjectDetails, () => this.repository.getObjectDetails(ref, path, localOnly));
 	}
 
 	detectObjectType(object: string): Promise<{ mimetype: string; encoding?: string }> {
