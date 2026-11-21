@@ -1,0 +1,11 @@
+{
+	"displayName": "Anden",
+	"description": "Manage local terminal sessions for Pi and Codex.",
+	"untrustedWorkspaces.description": "Anden only launches agents in trusted workspaces.",
+	"sessions.title": "Sessions",
+	"sessions.welcome": "Start Pi or Codex in an integrated terminal.\n[New Session](command:anden.newSession)",
+	"newSession.title": "New Session",
+	"switchSession.title": "Switch Session",
+	"pi.executablePath.description": "Absolute path to the Pi executable. Leave empty to look up Pi on the application PATH.",
+	"codex.executablePath.description": "Absolute path to the Codex executable. Leave empty to look up Codex on the application PATH."
+}
