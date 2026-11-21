@@ -229,4 +229,13 @@ import './contrib/keybindings/electron-browser/systemWideKeybindings.contributio
 //#endregion
 
 
-export { main } from './electron-browser/desktop.main.js';
+import product from '../platform/product/common/product.js';
+import { INativeWindowConfiguration } from '../platform/window/common/window.js';
+import { AndenWorkbench } from './contrib/anden/browser/andenWorkbench.js';
+import { main as openDesktopWorkbench } from './electron-browser/desktop.main.js';
+
+export function main(configuration: INativeWindowConfiguration): Promise<void> {
+	return openDesktopWorkbench(configuration, product.andenSessionWorkbench
+		? (container, instantiationService) => instantiationService.createInstance(AndenWorkbench, container)
+		: undefined);
+}

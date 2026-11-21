@@ -16,11 +16,14 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IAgentHostOTelPolicyReadiness, IAgentHostService } from '../../../../platform/agentHost/common/agentService.js';
 import { LocalAgentHostServiceClient } from '../../../../platform/agentHost/electron-browser/localAgentHostService.js';
+import { NullAgentHostService } from '../../../../platform/agentHost/browser/nullAgentHostService.js';
+import { IAgentSubscription } from '../../../../platform/agentHost/common/state/agentSubscription.js';
+import product from '../../../../platform/product/common/product.js';
 import { IAgentHostEnablementService } from '../../../../platform/agentHost/common/agentHostEnablementService.js';
 import { agentsWindowAgentHostClientInfo, editorWindowAgentHostClientInfo } from '../../../../platform/agentHost/common/agentHostClientInfo.js';
 import { CopilotCliVSCodeAssignmentContextKey } from '../../../../platform/agentHost/common/copilotCliConfig.js';
 import { ActionType } from '../../../../platform/agentHost/common/state/sessionActions.js';
-import { ROOT_STATE_URI } from '../../../../platform/agentHost/common/state/sessionState.js';
+import { RootState, ROOT_STATE_URI } from '../../../../platform/agentHost/common/state/sessionState.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { IDefaultAccountService } from '../../../../platform/defaultAccount/common/defaultAccount.js';
 import { ManagedSettingsFreshnessState } from '../../../../platform/policy/common/managedSettingsFreshness.js';
@@ -147,9 +150,22 @@ export class AgentHostPrewarmContribution extends Disposable implements IWorkben
 	}
 }
 
+class AndenDisabledAgentHostService extends NullAgentHostService {
+	private readonly emptyRoot: IAgentSubscription<RootState> = {
+		value: undefined, verifiedValue: undefined, onDidChange: Event.None,
+		onWillApplyAction: Event.None, onDidApplyAction: Event.None,
+	};
+
+	override get rootState(): IAgentSubscription<RootState> {
+		return this.emptyRoot;
+	}
+
+	override dispatch(): void { }
+}
+
 registerSingleton(
 	IAgentHostService,
-	WorkbenchAgentHostService as unknown as { new(...args: unknown[]): IAgentHostService },
+	product.andenSessionWorkbench ? AndenDisabledAgentHostService : WorkbenchAgentHostService as unknown as { new(...args: unknown[]): IAgentHostService },
 	InstantiationType.Delayed,
 );
 

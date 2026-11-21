@@ -148,14 +148,18 @@ export class DefaultAccountService extends Disposable implements IDefaultAccount
 	private readonly _onDidChangeManagedSettingsFreshness = this._register(new Emitter<IManagedSettingsFreshness>());
 	readonly onDidChangeManagedSettingsFreshness = this._onDidChangeManagedSettingsFreshness.event;
 
-	private readonly defaultAccountConfig: IDefaultAccountConfig;
+	private readonly defaultAccountConfig: IDefaultAccountConfig | undefined;
 	private defaultAccountProvider: IDefaultAccountProvider | null = null;
 
 	constructor(
 		@IProductService productService: IProductService,
 	) {
 		super();
-		this.defaultAccountConfig = toDefaultAccountConfig(productService.defaultChatAgent);
+		if (productService.defaultChatAgent) {
+			this.defaultAccountConfig = toDefaultAccountConfig(productService.defaultChatAgent);
+		} else {
+			this.initBarrier.open();
+		}
 	}
 
 	async getDefaultAccount(): Promise<IDefaultAccount | null> {
@@ -168,7 +172,7 @@ export class DefaultAccountService extends Disposable implements IDefaultAccount
 			return this.defaultAccountProvider.getDefaultAccountAuthenticationProvider();
 		}
 		return {
-			...this.defaultAccountConfig.authenticationProvider.default,
+			...(this.defaultAccountConfig?.authenticationProvider.default ?? { id: 'github', name: 'GitHub' }),
 			enterprise: false
 		};
 	}
@@ -1666,8 +1670,10 @@ class DefaultAccountProviderContribution extends Disposable implements IWorkbenc
 		@IDefaultAccountService defaultAccountService: IDefaultAccountService,
 	) {
 		super();
-		const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
-		defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);
+		if (productService.defaultChatAgent) {
+			const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
+			defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);
+		}
 	}
 }
 

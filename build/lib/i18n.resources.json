@@ -191,6 +191,10 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/contrib/anden",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/agentsVoice",
 			"project": "vscode-workbench"
 		},

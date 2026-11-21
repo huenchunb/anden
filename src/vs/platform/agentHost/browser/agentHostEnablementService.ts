@@ -12,6 +12,7 @@ import { IContextKeyService } from '../../contextkey/common/contextkey.js';
 import { InstantiationType, registerSingleton } from '../../instantiation/common/extensions.js';
 import { bindContextKey, observableConfigValue } from '../../observable/common/platformObservableUtils.js';
 import { COPILOT_SANDBOX_ALLOW_BYPASS_KEY, COPILOT_SANDBOX_ENABLED_KEY, IManagedSettingsService } from '../../policy/common/copilotManagedSettings.js';
+import product from '../../product/common/product.js';
 import { AGENT_HOST_ENABLED_CONTEXT_KEY, IAgentHostEnablementService } from '../common/agentHostEnablementService.js';
 
 export class AgentHostEnablementService extends Disposable implements IAgentHostEnablementService {
@@ -48,7 +49,7 @@ class BrowserAgentHostEnablementService extends AgentHostEnablementService {
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IManagedSettingsService managedSettingsService: IManagedSettingsService,
 	) {
-		super(!isWeb, configurationService, contextKeyService, managedSettingsService);
+		super(!isWeb && !product.andenSessionWorkbench, configurationService, contextKeyService, managedSettingsService);
 	}
 }
 

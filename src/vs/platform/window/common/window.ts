@@ -16,6 +16,7 @@ import { NativeParsedArgs } from '../../environment/common/argv.js';
 import { FileType } from '../../files/common/files.js';
 import { ILoggerResource, LogLevel } from '../../log/common/log.js';
 import { PolicyDefinition, PolicyValue } from '../../policy/common/policy.js';
+import product from '../../product/common/product.js';
 import { IPartsSplash } from '../../theme/common/themeService.js';
 import { IUserDataProfile } from '../../userDataProfile/common/userDataProfile.js';
 import { IAnyWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, IWorkspaceIdentifier } from '../../workspace/common/workspace.js';
@@ -332,6 +333,9 @@ export function hasNativeMenu(configurationService: IConfigurationService, title
 export type MenuBarVisibility = 'classic' | 'visible' | 'toggle' | 'hidden' | 'compact';
 
 export function getMenuBarVisibility(configurationService: IConfigurationService): MenuBarVisibility {
+	if (product.andenSessionWorkbench && isNative && !isMacintosh) {
+		return 'hidden';
+	}
 	const menuBarVisibility = configurationService.getValue<MenuBarVisibility | 'default'>(MenuSettings.MenuBarVisibility);
 
 	if (menuBarVisibility === 'default' || (menuBarVisibility === 'compact' && hasNativeMenu(configurationService)) || (isMacintosh && isNative)) {
@@ -413,6 +417,10 @@ export function hasNativeTitlebar(configurationService: IConfigurationService, t
 export function getTitleBarStyle(configurationService: IConfigurationService): TitlebarStyle {
 	if (isWeb) {
 		return TitlebarStyle.CUSTOM;
+	}
+
+	if (product.andenSessionWorkbench) {
+		return TitlebarStyle.NATIVE;
 	}
 
 	const configuration = configurationService.getValue<IWindowSettings | undefined>('window');

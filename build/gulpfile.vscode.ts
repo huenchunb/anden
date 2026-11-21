@@ -205,10 +205,12 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				json.date = readISODate(out);
 				json.checksums = checksums;
 				json.version = version;
-				json.copilotVersions = {
-					runtime: copilotRuntimeVersion,
-					sdk: getLockedPackageVersion('@microsoft/copilot-sdk'),
-				};
+				if (!product.andenSessionWorkbench) {
+					json.copilotVersions = {
+						runtime: copilotRuntimeVersion,
+						sdk: getLockedPackageVersion('@microsoft/copilot-sdk'),
+					};
+				}
 				// Stamp agentSdks from the per-platform results file produced
 				// by `build/agent-sdk/produce.ts` (an earlier pipeline step).
 				// Local dev: file absent → empty → not stamped.
@@ -239,7 +241,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 
 		const jsFilter = util.filter(data => !data.isDirectory() && /\.js$/.test(data.path));
 		const root = path.resolve(path.join(import.meta.dirname, '..'));
-		const productionDependencies = getProductionDependencies(root);
+		const productionDependencies = getProductionDependencies(root).filter(dependency => !product.andenSessionWorkbench ||
+			!/[\\/]node_modules[\\/](?:@microsoft[\\/]copilot-sdk(?:-[^\\/]+)?|@vscode[\\/]copilot-api)(?:[\\/]|$)/.test(dependency.folder));
 		const dependenciesSrc = productionDependencies.map(d => path.relative(root, d.source)).map(d => [`${d}/**`, `!${d}/**/{test,tests}/**`]).flat().concat('!**/*.mk');
 
 		const depFilterPattern = ['**', `!**/${config.version}/**`, '!**/bin/darwin-arm64-87/**', '!**/package-lock.json', '!**/yarn.lock'];
@@ -252,12 +255,15 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			.pipe(filter(depFilterPattern))
 			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, '.moduleignore')))
 			.pipe(util.cleanNodeModules(path.join(import.meta.dirname, `.moduleignore.${process.platform}`)));
-		ensureCopilotPlatformPackage(platform, arch);
-		const copilotRuntimePrebuilds = gulp.src(getCopilotRuntimePrebuildFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
+		const additionalDependencies = [];
+		if (!product.andenSessionWorkbench) {
+			ensureCopilotPlatformPackage(platform, arch);
+			additionalDependencies.push(gulp.src(getCopilotRuntimePrebuildFiles(platform, arch), { base: '.', dot: true, allowEmpty: true }));
+		}
 		ensureOSProxyResolverPlatformPackage(platform, arch);
 		const osProxyResolverPlatformPackage = gulp.src(getOSProxyResolverPlatformFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
 		// `cleanedDeps` has already dropped dot files; keep those of the platform packages, such as SDK plugin manifests.
-		const deps = merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
+		const deps = merge(cleanedDeps, osProxyResolverPlatformPackage, ...additionalDependencies)
 			.pipe(filter(getCopilotExcludeFilter(platform, arch), { dot: true }))
 			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch), { dot: true }))
 			.pipe(filter(getRipgrepExcludeFilter(platform, arch), { dot: true }))
@@ -429,19 +435,21 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				.pipe(replace('@@VERSIONFOLDER@@', versionedResourcesFolder ? `${versionedResourcesFolder}\\` : ''))
 				.pipe(rename(product.nameShort + '.VisualElementsManifest.xml')));
 
-			// Setup publishes it next to the copilot.exe shim; see build/win32/copilot.iss.
-			result = merge(result, gulp.src('resources/win32/bin/copilot.sh', { base: 'resources/win32' })
-				.pipe(through(function (file: File.BufferFile) {
-					file.contents = Buffer.from(renderCopilotShimLauncher(file.contents.toString('utf8'), {
-						commit: String(commit),
-						quality: String(quality),
-						applicationName: product.applicationName,
-						dataFolderName: product.dataFolderName,
-						serverDataFolderName: product.serverDataFolderName || '.vscode-remote',
-					}));
-					this.emit('data', file);
-				}))
-				.pipe(rename(f => { f.dirname = 'bin/copilot-shim'; f.basename = 'copilot'; f.extname = ''; })));
+			if (!product.andenSessionWorkbench) {
+				// Setup publishes it next to the copilot.exe shim; see build/win32/copilot.iss.
+				result = merge(result, gulp.src('resources/win32/bin/copilot.sh', { base: 'resources/win32' })
+					.pipe(through(function (file: File.BufferFile) {
+						file.contents = Buffer.from(renderCopilotShimLauncher(file.contents.toString('utf8'), {
+							commit: String(commit),
+							quality: String(quality),
+							applicationName: product.applicationName,
+							dataFolderName: product.dataFolderName,
+							serverDataFolderName: product.serverDataFolderName || '.vscode-remote',
+						}));
+						this.emit('data', file);
+					}))
+					.pipe(rename(f => { f.dirname = 'bin/copilot-shim'; f.basename = 'copilot'; f.extname = ''; })));
+			}
 
 			result = merge(result, gulp.src('.build/policies/win32/**', { base: '.build/policies/win32' })
 				.pipe(rename(f => f.dirname = `policies/${f.dirname}`)));
@@ -607,7 +615,7 @@ BUILD_TARGETS.forEach(buildTarget => {
 			compileNativeExtensionsBuildTask,
 			util.rimraf(path.join(buildRoot, destinationFolderName)),
 			packageTask(platform, arch, sourceFolderName, destinationFolderName, opts),
-			prepareCopilotRipgrepShimTask(platform, arch, destinationFolderName)
+			...(product.andenSessionWorkbench ? [] : [prepareCopilotRipgrepShimTask(platform, arch, destinationFolderName)])
 		];
 
 		if (platform === 'win32') {
@@ -634,7 +642,7 @@ BUILD_TARGETS.forEach(buildTarget => {
 			copyCodiconsTask,
 			cleanExtensionsBuildTask,
 			compileNonNativeExtensionsBuildTask,
-			compileCopilotExtensionBuildTask,
+			...(product.andenSessionWorkbench ? [] : [compileCopilotExtensionBuildTask]),
 			compileExtensionMediaBuildTask,
 			writeISODate('out-build'),
 			esbuildBundleTask,

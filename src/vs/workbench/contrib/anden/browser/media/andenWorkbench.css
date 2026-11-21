@@ -1,0 +1,153 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench .anden-workbench {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	grid-template-columns: clamp(160px, 25%, 270px) minmax(0, 1fr);
+	background: var(--vscode-terminal-background, var(--vscode-editor-background));
+	color: var(--vscode-foreground);
+}
+
+.anden-workbench .anden-sidebar {
+	min-width: 0;
+	overflow: auto;
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+	border-right: 1px solid var(--vscode-sideBar-border, var(--vscode-widget-border, transparent));
+}
+
+.anden-workbench .anden-sidebar-header,
+.anden-workbench .anden-session-header {
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--vscode-sideBar-border, var(--vscode-widget-border, transparent));
+}
+
+.anden-workbench .anden-sidebar-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.anden-workbench h1,
+.anden-workbench h2 {
+	font-size: 14px;
+	font-weight: 600;
+	margin: 0;
+}
+
+.anden-workbench button {
+	appearance: none;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.anden-workbench button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.anden-workbench button.anden-primary {
+	padding: 4px 8px;
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+	border-color: var(--vscode-button-border, transparent);
+}
+
+.anden-workbench button.anden-primary:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.anden-workbench .anden-session-list {
+	list-style: none;
+	margin: 0;
+	padding: 6px;
+}
+
+.anden-workbench .anden-session-row {
+	display: flex;
+	align-items: center;
+	border-radius: 4px;
+}
+
+.anden-workbench .anden-session-row:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.anden-workbench .anden-session-row:has([aria-current="true"]) {
+	color: var(--vscode-list-activeSelectionForeground);
+	background: var(--vscode-list-activeSelectionBackground);
+}
+
+.anden-workbench .anden-session-select {
+	flex: 1;
+	min-width: 0;
+	padding: 6px 8px;
+	text-align: left;
+}
+
+.anden-workbench .anden-session-select span {
+	display: block;
+}
+
+.anden-workbench .anden-session-close {
+	margin-right: 4px;
+	padding: 0 5px;
+	font-size: 16px;
+}
+
+.anden-workbench .anden-session-close:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.anden-workbench .anden-folder {
+	font-size: 12px;
+	opacity: 0.8;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.anden-workbench .anden-main {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+}
+
+.anden-workbench .anden-session-content {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+}
+
+.anden-workbench .anden-terminal,
+.anden-workbench .anden-empty {
+	position: absolute;
+	inset: 0;
+}
+
+.anden-workbench .anden-terminal {
+	overflow: hidden;
+}
+
+.anden-workbench .anden-terminal .terminal-wrapper {
+	height: 100%;
+}
+
+.anden-workbench .anden-empty:not([hidden]) {
+	display: grid;
+	place-content: center;
+	justify-items: center;
+	text-align: center;
+	padding: 16px;
+}

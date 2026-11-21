@@ -764,15 +764,17 @@ export class CodeApplication extends Disposable {
 		appInstantiationService.invokeFunction(accessor => this._register(new ErrorTelemetry(accessor.get(ILogService), accessor.get(ITelemetryService))));
 
 		// Agent Host
-		// Always instantiate the starter + manager. They are cheap (the
+		// In products with Agent Host, instantiate the starter + manager (the
 		// constructors only register an IPC listener and emitters) and the agent
 		// host utility process is spawned lazily on the first window connection
 		// request. The renderer only requests a connection when the runtime is
 		// available and AI features are enabled there, which the main process
 		// cannot fully observe.
-		const agentHostStarter = appInstantiationService.createInstance(ElectronAgentHostStarter, { machineId, sqmId, devDeviceId });
-		// This manager self-disposes after its lifecycle join; CodeApplication disposes before later shutdown listeners run.
-		const agentHostProcessManager = appInstantiationService.createInstance(AgentHostProcessManager, agentHostStarter, process.platform);
+		const agentHostProcessManager = this.productService.andenSessionWorkbench ? undefined : appInstantiationService.createInstance(
+			AgentHostProcessManager,
+			appInstantiationService.createInstance(ElectronAgentHostStarter, { machineId, sqmId, devDeviceId }),
+			process.platform,
+		);
 
 		// Metered connection telemetry
 		appInstantiationService.invokeFunction(accessor => {
@@ -823,7 +825,7 @@ export class CodeApplication extends Disposable {
 				...windows.map(window => window.ready()),
 				sharedProcessReady,
 				appInstantiationService.invokeFunction(accessor => accessor.get(ILocalPtyService).getLatency()),
-				agentHostProcessManager.start()
+				agentHostProcessManager?.start()
 			]);
 		}
 
@@ -1558,7 +1560,7 @@ export class CodeApplication extends Disposable {
 		const args = this.environmentMainService.args;
 
 		// Handle agents window first based on context
-		if (args['agents']) {
+		if (args['agents'] && !this.productService.andenSessionWorkbench) {
 			return windowsMainService.openAgentsWindow({
 				context,
 				cli: args,
@@ -1568,7 +1570,7 @@ export class CodeApplication extends Disposable {
 
 		// Then check for windows from protocol links to open
 		if (initialProtocolUrls) {
-			const agentsWindowProtocolUrlIndex = initialProtocolUrls.urls.findIndex(protocolUrl =>
+			const agentsWindowProtocolUrlIndex = this.productService.andenSessionWorkbench ? -1 : initialProtocolUrls.urls.findIndex(protocolUrl =>
 				parseExternalOpenSessionLinkUri(protocolUrl.uri, this.productService.urlProtocol)
 				|| parseExternalAgentsWindowNewSessionLinkUri(protocolUrl.uri, this.productService.urlProtocol));
 			if (agentsWindowProtocolUrlIndex >= 0) {

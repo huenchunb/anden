@@ -472,7 +472,7 @@ function doPackageLocalExtensionsStream(forWeb: boolean, native: boolean): Strea
 				return { name: extensionName, path: extensionPath, manifestPath: absoluteManifestPath };
 			})
 			.filter(({ name }) => native ? nativeExtensionsSet.has(name) : !nativeExtensionsSet.has(name))
-			.filter(({ name }) => excludedExtensions.indexOf(name) === -1)
+			.filter(({ name }) => excludedExtensions.indexOf(name) === -1 && !(productJson.andenSessionWorkbench && name === 'anden'))
 			.filter(({ name }) => builtInExtensions.every(b => b.name !== name))
 			.filter(({ manifestPath }) => (forWeb ? isWebExtension(require(manifestPath)) : true))
 	);

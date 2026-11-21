@@ -9,6 +9,7 @@ import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getGitCommitDate } from '../lib/date.ts';
+import product from '../../product.json' with { type: 'json' };
 import { getPnpmCommand } from '../lib/pnpm.ts';
 import { applyIncrementalClientChanges, mapWithConcurrency, MAX_CONCURRENT_FILE_OPERATIONS } from './transpile.ts';
 
@@ -79,7 +80,7 @@ export async function runBuildFast(repoRoot: string, force: boolean, clientOnly 
 		const environment = readEnvironment(repoRoot);
 		const statePath = path.join(stateDir, 'state.json');
 		const saved = await readState(statePath);
-		const selectedLanes: readonly BuildLane[] = clientOnly ? ['client'] : buildLanes;
+		const selectedLanes: readonly BuildLane[] = clientOnly ? ['client'] : product.andenSessionWorkbench ? ['client', 'extensions'] : buildLanes;
 
 		let before: BuildFastSnapshot;
 		const changes: Record<BuildLane, readonly string[]> = { client: [], extensions: [], copilot: [] };
@@ -101,7 +102,8 @@ export async function runBuildFast(repoRoot: string, force: boolean, clientOnly 
 		}
 
 		const outputs = await getOutputStatus(repoRoot);
-		const plan = createBuildPlan(saved, environment, changes, outputs, force, clientOnly);
+		const buildPlan = createBuildPlan(saved, environment, changes, outputs, force, clientOnly);
+		const plan: BuildFastPlan = product.andenSessionWorkbench ? { ...buildPlan, copilot: 'skip' } : buildPlan;
 		logPlan(plan);
 
 		const hasBuildWork = plan.client !== 'skip' || plan.extensions !== 'skip' || plan.copilot !== 'skip';
@@ -419,7 +421,7 @@ async function runAllFull(repoRoot: string, clientOnly: boolean): Promise<void> 
 		runCommand(repoRoot, process.execPath, [path.join(repoRoot, 'build', 'next', 'index.ts'), 'transpile'], 'client'),
 		...(!clientOnly ? [
 			runPnpm(repoRoot, EXTENSION_BUILD_ARGS, 'extensions'),
-			runPnpm(repoRoot, COPILOT_BUILD_ARGS, 'copilot'),
+			...(product.andenSessionWorkbench ? [] : [runPnpm(repoRoot, COPILOT_BUILD_ARGS, 'copilot')]),
 		] : []),
 	]);
 }

@@ -378,7 +378,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 
 	constructor(
 		protected readonly parent: HTMLElement,
-		private readonly layoutOptions?: { resetLayout: boolean }
+		private readonly layoutOptions?: { resetLayout: boolean; customContent?: boolean }
 	) {
 		super();
 	}
@@ -858,7 +858,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		}));
 
 		// Layout Initialization State
-		const initialEditorsState = this.getInitialEditorsState();
+		const initialEditorsState = this.layoutOptions?.customContent ? undefined : this.getInitialEditorsState();
 		if (initialEditorsState) {
 			this.logService.trace('Initial editor state', initialEditorsState);
 		}
@@ -867,8 +867,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 				editors: initialEditorsState?.layout
 			},
 			editor: {
-				restoreEditors: this.shouldRestoreEditors(this.contextService, initialEditorsState),
-				editorsToOpen: this.resolveEditorsToOpen(fileService, initialEditorsState),
+				restoreEditors: !this.layoutOptions?.customContent && this.shouldRestoreEditors(this.contextService, initialEditorsState),
+				editorsToOpen: this.layoutOptions?.customContent ? Promise.resolve([]) : this.resolveEditorsToOpen(fileService, initialEditorsState),
 			},
 			views: {
 				defaults: this.getDefaultLayoutViews(this.environmentService, this.storageService),
@@ -1090,6 +1090,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	protected restoreParts(): void {
+		if (this.layoutOptions?.customContent) {
+			this.whenReadyPromise.complete();
+			this.whenRestoredPromise.complete();
+			return;
+		}
 
 		// distinguish long running restore operations that
 		// are required for the layout to be ready from those
@@ -1799,7 +1804,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			{ proportionalLayout: false }
 		);
 
-		this.mainContainer.prepend(workbenchGrid.element);
+		// Keep the standard grid detached when the desktop product supplies its own content.
+		// The parts can still initialize for services that consume them.
+		if (!this.layoutOptions?.customContent) {
+			this.mainContainer.prepend(workbenchGrid.element);
+		}
 		this.mainContainer.setAttribute('role', 'application');
 		this.workbenchGrid = workbenchGrid;
 		this.workbenchGrid.edgeSnapping = this.state.runtime.mainWindowFullscreen;

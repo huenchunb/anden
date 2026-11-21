@@ -6,7 +6,7 @@
 import { localize } from '../../nls.js';
 import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
-import { Workbench } from '../browser/workbench.js';
+import { Workbench, WorkbenchContentFactory } from '../browser/workbench.js';
 import { NativeWindow } from './window.js';
 import { setFullscreen } from '../../base/browser/browser.js';
 import { domContentLoaded } from '../../base/browser/dom.js';
@@ -75,7 +75,8 @@ import { MultiplexPolicyService } from '../../platform/policy/common/multiplexPo
 export class DesktopMain extends Disposable {
 
 	constructor(
-		private readonly configuration: INativeWindowConfiguration
+		private readonly configuration: INativeWindowConfiguration,
+		private readonly createContent?: WorkbenchContentFactory,
 	) {
 		super();
 
@@ -134,7 +135,8 @@ export class DesktopMain extends Disposable {
 		// Create Workbench
 		const workbench = new Workbench(mainWindow.document.body, {
 			extraClasses: this.getExtraClasses(),
-			resetLayout: this.configuration['disable-layout-restore'] === true
+			resetLayout: this.configuration['disable-layout-restore'] === true,
+			createContent: this.createContent,
 		}, services.serviceCollection, services.logService);
 
 		// Listeners
@@ -449,8 +451,8 @@ export interface IDesktopMain {
 	main(configuration: INativeWindowConfiguration): Promise<void>;
 }
 
-export function main(configuration: INativeWindowConfiguration): Promise<void> {
-	const workbench = new DesktopMain(configuration);
+export function main(configuration: INativeWindowConfiguration, createContent?: WorkbenchContentFactory): Promise<void> {
+	const workbench = new DesktopMain(configuration, createContent);
 
 	return workbench.open();
 }

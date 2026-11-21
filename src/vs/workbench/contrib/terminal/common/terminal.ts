@@ -506,6 +506,7 @@ export const enum TerminalCommandId {
 }
 
 export const DEFAULT_COMMANDS_TO_SKIP_SHELL: string[] = [
+	'anden.switchSession',
 	TerminalCommandId.ClearSelection,
 	TerminalCommandId.Clear,
 	TerminalCommandId.CopyAndClearSelection,

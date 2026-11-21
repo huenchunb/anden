@@ -86,7 +86,7 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
 		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@ILogService private readonly logService: ILogService,
-		@IProductService productService: IProductService
+		@IProductService private readonly productService: IProductService
 	) {
 		super();
 		this.storageManager = this._register(new StorageManager(storageService));
@@ -521,6 +521,9 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
 	}
 
 	private _isDisabledInEnv(extension: IExtension): boolean {
+		if (this.productService.andenSessionWorkbench && ['github.copilot', 'github.copilot-chat', 'vscode.anden'].includes(extension.identifier.id.toLowerCase())) {
+			return true;
+		}
 		if (this.allUserExtensionsDisabled) {
 			return !extension.isBuiltin && !isResolverExtension(extension.manifest, this.environmentService.remoteAuthority);
 		}

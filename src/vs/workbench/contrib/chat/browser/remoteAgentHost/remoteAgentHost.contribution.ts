@@ -12,6 +12,7 @@ import { InstantiationType, registerSingleton } from '../../../../../platform/in
 import { Registry } from '../../../../../platform/registry/common/platform.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../../common/contributions.js';
 import { CloudSandboxAgentHostService } from './cloudSandboxAgentHostService.js';
+import product from '../../../../../platform/product/common/product.js';
 import { CloudSandboxApiService } from './cloudSandboxApiService.js';
 import { CloudSandboxDraftPreparationService } from './cloudSandboxDraftPreparationService.js';
 import { CloudSandboxModelCatalogService, ICloudSandboxModelCatalogService } from './cloudSandboxModels.js';
@@ -48,10 +49,12 @@ registerSingleton(IMissionControlAvailabilityService, MissionControlAvailability
 registerSingleton(IRemoteAgentHostConnectionCustomizationService, RemoteAgentHostConnectionCustomizationService, InstantiationType.Delayed);
 registerSingleton(IAgentHostAdvertisedAuthenticationResolver, RemoteAgentHostAuthenticationResolver, InstantiationType.Delayed);
 
-registerWorkbenchContribution2(RemoteAgentHostContribution.ID, RemoteAgentHostContribution, WorkbenchPhase.AfterRestored);
-registerWorkbenchContribution2(EditorCloudSandboxContribution.ID, EditorCloudSandboxContribution, WorkbenchPhase.AfterRestored);
-registerWorkbenchContribution2(EditorExtensionRemoteAgentHostsContribution.ID, EditorExtensionRemoteAgentHostsContribution, WorkbenchPhase.AfterRestored);
-registerWorkbenchContribution2(MissionControlContribution.ID, MissionControlContribution, WorkbenchPhase.AfterRestored);
+if (!product.andenSessionWorkbench) {
+	registerWorkbenchContribution2(RemoteAgentHostContribution.ID, RemoteAgentHostContribution, WorkbenchPhase.AfterRestored);
+	registerWorkbenchContribution2(EditorCloudSandboxContribution.ID, EditorCloudSandboxContribution, WorkbenchPhase.AfterRestored);
+	registerWorkbenchContribution2(EditorExtensionRemoteAgentHostsContribution.ID, EditorExtensionRemoteAgentHostsContribution, WorkbenchPhase.AfterRestored);
+	registerWorkbenchContribution2(MissionControlContribution.ID, MissionControlContribution, WorkbenchPhase.AfterRestored);
+}
 
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
 	properties: {

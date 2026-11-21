@@ -49,6 +49,7 @@ import { AccessibleViewRegistry } from '../../platform/accessibility/browser/acc
 import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
 import { IMarkdownRendererService } from '../../platform/markdown/browser/markdownRenderer.js';
 import { EditorMarkdownCodeBlockRenderer } from '../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
+import { IDisposable } from '../../base/common/lifecycle.js';
 
 export interface IWorkbenchOptions {
 
@@ -61,9 +62,27 @@ export interface IWorkbenchOptions {
 	 * Whether to reset the workbench parts layout on startup.
 	 */
 	resetLayout?: boolean;
+
+	/** Replaces the standard workbench parts with a desktop product's content. */
+	createContent?: WorkbenchContentFactory;
 }
 
+interface IWorkbenchContent extends IDisposable {
+	focus(): void;
+}
+
+export type WorkbenchContentFactory = (container: HTMLElement, instantiationService: IInstantiationService) => IWorkbenchContent;
+
 export class Workbench extends Layout {
+	private customContent: IWorkbenchContent | undefined;
+
+	override focus(): void {
+		if (this.customContent) {
+			this.customContent.focus();
+		} else {
+			super.focus();
+		}
+	}
 
 	private readonly _onWillShutdown = this._register(new Emitter<WillShutdownEvent>());
 	readonly onWillShutdown = this._onWillShutdown.event;
@@ -77,7 +96,7 @@ export class Workbench extends Layout {
 		private readonly serviceCollection: ServiceCollection,
 		logService: ILogService
 	) {
-		super(parent, { resetLayout: Boolean(options?.resetLayout) });
+		super(parent, { resetLayout: Boolean(options?.resetLayout), customContent: !!options?.createContent });
 
 		// Perf: measure workbench startup time
 		mark('code/willStartWorkbench');
@@ -153,6 +172,9 @@ export class Workbench extends Layout {
 
 				// Workbench Layout
 				this.createWorkbenchLayout();
+				if (this.options?.createContent) {
+					this.customContent = this._register(this.options.createContent(this.mainContainer, instantiationService));
+				}
 
 				// Layout
 				this.layout();

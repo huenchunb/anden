@@ -303,6 +303,9 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 	async openAgentsWindow(openConfig: IOpenConfiguration, folderUri?: URI, reveal?: URI | 'new', source?: AgentsWindowOpenSource, folderUriIsDefault = false, draft?: IAgentsWindowDraft, onboardingSessionResource?: URI, revealRemoteAuthority?: string): Promise<ICodeWindow[]> {
 		this.logService.trace('windowsManager#openAgentsWindow');
+		if (product.andenSessionWorkbench) {
+			return [];
+		}
 
 		const existingWindows = this.getWindows();
 		folderUri = await resolveAgentsWindowFolder(openConfig, folderUri, reveal === 'new' ? undefined : reveal, source, cli => this.doExtractPathsFromCLI(cli));
@@ -1667,7 +1670,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 			cssModules: this.cssDevelopmentService.isEnabled ? await this.cssDevelopmentService.getCssModules() : undefined,
 
-			isSessionsWindow: isWorkspaceIdentifier(options.workspace) && isEqual(options.workspace.configPath, this.environmentMainService.agentSessionsWorkspace),
+			isSessionsWindow: !product.andenSessionWorkbench && isWorkspaceIdentifier(options.workspace) && isEqual(options.workspace.configPath, this.environmentMainService.agentSessionsWorkspace),
 		};
 
 		// New window
