@@ -460,6 +460,13 @@ export function getWindowControlsStyle(configurationService: IConfigurationServi
 
 export const DEFAULT_CUSTOM_TITLEBAR_HEIGHT = 35; // includes space for command center
 
+export const ANDEN_MAC_WINDOW_CONTROLS_INSET = 12;
+
+/** Only the main Anden window opts in; auxiliary windows keep their usual chrome. */
+export function useAndenIntegratedTitlebar(andenSessionWorkbench: boolean | undefined, isMacOS: boolean, settings?: Partial<Pick<IWindowSettings, 'nativeTabs' | 'nativeFullScreen'>>): boolean {
+	return andenSessionWorkbench === true && isMacOS && settings?.nativeTabs !== true && settings?.nativeFullScreen !== false;
+}
+
 /** Centers macOS traffic lights vertically, optionally keeping their horizontal inset independent of height. */
 export function getMacOSWindowControlsPosition(height: number, osVersion: string, horizontalInset?: number): IPoint | null {
 	const buttonHeight = isTahoeOrNewer(osVersion) ? 14 : 16;
@@ -612,6 +619,8 @@ export interface IWindowFolderLocation {
 export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
 	mainPid: number;
 	handle?: VSBuffer;
+	/** The main macOS window was created with its native controls over the web contents. */
+	andenIntegratedTitlebar?: boolean;
 
 	machineId: string;
 	sqmId: string;

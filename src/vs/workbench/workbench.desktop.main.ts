@@ -236,6 +236,6 @@ import { main as openDesktopWorkbench } from './electron-browser/desktop.main.js
 
 export function main(configuration: INativeWindowConfiguration): Promise<void> {
 	return openDesktopWorkbench(configuration, product.andenSessionWorkbench
-		? (container, instantiationService) => instantiationService.createInstance(AndenWorkbench, container)
+		? (container, instantiationService) => instantiationService.createInstance(AndenWorkbench, container, configuration.andenIntegratedTitlebar === true)
 		: undefined);
 }

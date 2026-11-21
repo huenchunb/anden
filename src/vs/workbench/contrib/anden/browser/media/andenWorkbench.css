@@ -3,6 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+@font-face {
+	font-family: 'Google Sans';
+	src: url('./anden-google-sans.woff2') format('woff2');
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+}
+
+.monaco-workbench.anden-session-window {
+	--workbench-ui-font-family: 'Google Sans', var(--workbench-system-font-family);
+}
+
 .monaco-workbench .anden-workbench {
 	position: absolute;
 	inset: 0;
@@ -32,6 +44,52 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
+}
+
+.anden-workbench.anden-integrated-titlebar:not(.anden-fullscreen) {
+	/* Keep the heading past the native buttons even at a low workbench zoom. */
+	grid-template-columns: clamp(max(160px, calc(var(--anden-window-controls-space) + 76px)), 25%, 270px) minmax(0, 1fr);
+}
+
+.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar {
+	container-type: inline-size;
+}
+
+.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar-header {
+	padding-block: 8px;
+	padding-left: var(--anden-window-controls-space);
+}
+
+.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar-header h1 {
+	display: flex;
+	align-items: center;
+	min-height: 28px;
+}
+
+@container (max-width: 254px) {
+	.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar-header {
+		display: grid;
+		grid-template-columns: calc(var(--anden-window-controls-space) - 16px) minmax(0, 1fr);
+		column-gap: 0;
+		padding-left: 16px;
+	}
+
+	.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar-header h1 {
+		grid-column: 2;
+	}
+
+	.anden-integrated-titlebar:not(.anden-fullscreen) .anden-sidebar-header button {
+		grid-column: 1 / -1;
+		justify-self: start;
+	}
+}
+
+.anden-integrated-titlebar:not(.anden-fullscreen) :is(.anden-sidebar-header, .anden-session-header) {
+	-webkit-app-region: drag;
+}
+
+.anden-integrated-titlebar .anden-sidebar-header button {
+	-webkit-app-region: no-drag;
 }
 
 .anden-workbench h1,
@@ -138,6 +196,8 @@
 
 .anden-workbench .anden-terminal {
 	overflow: hidden;
+	/* xterm sets its own glyph font; preserve the inherited font for its auxiliary DOM. */
+	font-family: var(--workbench-system-font-family);
 }
 
 .anden-workbench .anden-terminal .terminal-wrapper {

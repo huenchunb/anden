@@ -136,6 +136,7 @@ export interface IOpenEmptyConfiguration extends IBaseOpenConfiguration { }
 
 export interface IDefaultBrowserWindowOptionsOverrides {
 	forceNativeTitlebar?: boolean;
+	integratedMacTitlebar?: boolean;
 	disableFullscreen?: boolean;
 	alwaysOnTop?: boolean;
 	frameless?: boolean;
@@ -257,7 +258,8 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		options.tabbingIdentifier = productService.nameShort; // this opts in to native macOS tabs
 	}
 
-	const hideNativeTitleBar = !hasNativeTitlebar(configurationService, overrides?.forceNativeTitlebar ? TitlebarStyle.NATIVE : undefined);
+	const integratedMacTitlebar = isMacintosh && overrides?.integratedMacTitlebar === true;
+	const hideNativeTitleBar = !hasNativeTitlebar(configurationService, overrides?.forceNativeTitlebar ? TitlebarStyle.NATIVE : integratedMacTitlebar ? TitlebarStyle.CUSTOM : undefined);
 	if (hideNativeTitleBar) {
 		options.titleBarStyle = 'hidden';
 		if (!isMacintosh) {

@@ -13,3 +13,19 @@ pnpm run build-fast
 If an executable is not found on the shell PATH, add `anden.pi.executablePath` or `anden.codex.executablePath` to the profile's `User/settings.json`. Use an absolute path to a directly executable file. Anden doesn't install the CLIs, sign in for you, or send prompts.
 
 Sessions use the existing integrated terminal engine but are not editor tabs or bottom-panel terminals. They are transient: closing or reloading the window does not restore them. The IDE and GitHub views are not part of this window yet.
+
+On macOS, the main window keeps the native window buttons in the Sessions header and uses the noninteractive areas of the header to move the window. Native tabs or simple fullscreen retain the standard system title bar for compatibility.
+
+## Interface font
+
+The desktop window uses a bundled Google Sans variable font for UI text. Its Latin subset covers Spanish; other scripts fall back to the workbench's platform and locale fonts. Terminal rendering, editor font settings, and native system controls are unchanged.
+
+`browser/media/anden-google-sans.woff2` is derived from the normal Google Sans v14.000 font in [Google Fonts, revision `06bfe0d`](https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/googlesans). The license and copyright notice are in [`licenses/google-sans-OFL.txt`](../../../../../licenses/google-sans-OFL.txt). To reproduce the asset from `GoogleSans[GRAD,opsz,wght].ttf` using FontTools 4.62.1 and Brotli 1.2.0:
+
+```sh
+pyftsubset 'GoogleSans[GRAD,opsz,wght].ttf' \
+  --output-file=browser/media/anden-google-sans.woff2 \
+  --flavor=woff2 \
+  --unicodes='U+0000-024F,U+0300-036F,U+1E00-1EFF,U+2000-20CF,U+2122,U+2212' \
+  --layout-features='*'
+```

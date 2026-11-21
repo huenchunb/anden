@@ -6,11 +6,20 @@
 import assert from 'assert';
 import { URI } from '../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
-import { extractChatSessionToOpen, getMacOSWindowControlsPosition, isValidCopilotCliSessionId, parseExternalAgentsWindowNewSessionLinkUri } from '../../common/window.js';
+import { extractChatSessionToOpen, getMacOSWindowControlsPosition, isValidCopilotCliSessionId, parseExternalAgentsWindowNewSessionLinkUri, useAndenIntegratedTitlebar } from '../../common/window.js';
 
 suite('window', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
+
+	test('uses the integrated titlebar only for compatible Anden macOS windows', () => {
+		assert.strictEqual(useAndenIntegratedTitlebar(true, true), true);
+		assert.strictEqual(useAndenIntegratedTitlebar(true, true, { nativeTabs: false, nativeFullScreen: true }), true);
+		assert.strictEqual(useAndenIntegratedTitlebar(true, true, { nativeTabs: true }), false);
+		assert.strictEqual(useAndenIntegratedTitlebar(true, true, { nativeFullScreen: false }), false);
+		assert.strictEqual(useAndenIntegratedTitlebar(true, false), false);
+		assert.strictEqual(useAndenIntegratedTitlebar(undefined, true), false);
+	});
 
 	test('preserves legacy macOS traffic-light positioning without a fixed inset', () => {
 		assert.deepStrictEqual({

@@ -3,9 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append } from '../../../../base/browser/dom.js';
+import { getZoomFactor, isFullscreen, onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../../base/browser/browser.js';
+import { $, append, getWindow, getWindowId } from '../../../../base/browser/dom.js';
+import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
-import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
 import { Schemas } from '../../../../base/common/network.js';
 import { getCaseInsensitive } from '../../../../base/common/objects.js';
 import { isAbsolute, delimiter, join } from '../../../../base/common/path.js';
@@ -18,12 +20,14 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
+import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { KeybindingWeight, KeybindingsRegistry } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import product from '../../../../platform/product/common/product.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
+import { ANDEN_MAC_WINDOW_CONTROLS_INSET } from '../../../../platform/window/common/window.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustRequestService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
@@ -81,6 +85,7 @@ export class AndenWorkbench extends Disposable {
 
 	constructor(
 		container: HTMLElement,
+		integratedTitlebar: boolean,
 		@ITerminalService private readonly terminals: ITerminalService,
 		@ITerminalInstanceService private readonly terminalInstances: ITerminalInstanceService,
 		@IQuickInputService private readonly quickInput: IQuickInputService,
@@ -91,12 +96,15 @@ export class AndenWorkbench extends Disposable {
 		@IConfigurationService private readonly configuration: IConfigurationService,
 		@INotificationService private readonly notifications: INotificationService,
 		@IWorkbenchEnvironmentService private readonly environment: IWorkbenchEnvironmentService,
+		@INativeHostService private readonly nativeHost: INativeHostService,
 	) {
 		super();
 		const root = $('div.anden-workbench');
+		container.classList.add('anden-session-window');
 		container.prepend(root);
 		const sidebar = append(root, $('nav.anden-sidebar', { 'aria-label': localize('sessions', "Sessions") }));
-		const toolbar = append(sidebar, $('div.anden-sidebar-header', {}, $('h1', {}, localize('sessions', "Sessions"))));
+		const toolbar = append(sidebar, $('div.anden-sidebar-header'));
+		const sessionsHeading = append(toolbar, $('h1', {}, localize('sessions', "Sessions")));
 		this.newButton = append(toolbar, $('button.anden-primary', { type: 'button' }, localize('newSession', "New Session")));
 		this.newButton.onclick = () => void this.newSession();
 		this.list = append(sidebar, $('ul.anden-session-list'));
@@ -112,10 +120,17 @@ export class AndenWorkbench extends Disposable {
 		const startButton = append(this.empty, $('button.anden-primary', { type: 'button' }, localize('newSession', "New Session")));
 		startButton.onclick = () => void this.newSession();
 		this.renderSelection();
+		if (integratedTitlebar) {
+			this.integrateTitlebar(root, toolbar, sessionsHeading);
+		}
 
 		const observer = new ResizeObserver(() => this.layoutSession());
 		observer.observe(this.content);
-		this._register({ dispose: () => { observer.disconnect(); root.remove(); } });
+		this._register(toDisposable(() => {
+			observer.disconnect();
+			root.remove();
+			container.classList.remove('anden-session-window');
+		}));
 		this._register(CommandsRegistry.registerCommand(switchSessionCommand, () => this.pickSession()));
 	}
 
@@ -125,6 +140,43 @@ export class AndenWorkbench extends Disposable {
 		} else {
 			this.newButton.focus();
 		}
+	}
+
+	private integrateTitlebar(root: HTMLElement, toolbar: HTMLElement, heading: HTMLElement): void {
+		root.classList.add('anden-integrated-titlebar');
+		const targetWindow = getWindow(root);
+		const targetWindowId = getWindowId(targetWindow);
+		let lastHeight: number | undefined;
+		const update = () => {
+			const fullscreen = isFullscreen(targetWindow);
+			root.classList.toggle('anden-fullscreen', fullscreen);
+			if (fullscreen) {
+				lastHeight = undefined;
+				return;
+			}
+
+			const zoom = getZoomFactor(targetWindow);
+			// Native controls do not scale with the web contents.
+			root.style.setProperty('--anden-window-controls-space', `${84 / zoom}px`);
+			const bounds = heading.getBoundingClientRect();
+			const center = bounds.top - root.getBoundingClientRect().top + bounds.height / 2;
+			const height = Math.round(center * 2 * zoom);
+			if (height > 0 && height !== lastHeight) {
+				lastHeight = height;
+				void this.nativeHost.updateWindowControls({ targetWindowId, height, horizontalInset: ANDEN_MAC_WINDOW_CONTROLS_INSET }).catch(onUnexpectedError);
+			}
+		};
+		const onWindowChange = (windowId: number) => {
+			if (windowId === targetWindowId) {
+				update();
+			}
+		};
+		this._register(onDidChangeFullscreen(onWindowChange));
+		this._register(onDidChangeZoomLevel(onWindowChange));
+		const observer = new ResizeObserver(update);
+		observer.observe(toolbar);
+		this._register(toDisposable(() => observer.disconnect()));
+		update();
 	}
 
 	private async newSession(): Promise<void> {

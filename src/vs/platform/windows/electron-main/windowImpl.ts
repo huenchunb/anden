@@ -33,7 +33,7 @@ import { IApplicationStorageMainService, IStorageMainService } from '../../stora
 import { ITelemetryService } from '../../telemetry/common/telemetry.js';
 import { ThemeIcon } from '../../../base/common/themables.js';
 import { IThemeMainService } from '../../theme/electron-main/themeMainService.js';
-import { getMenuBarVisibility, IFolderToOpen, INativeWindowConfiguration, IWindowSettings, IWorkspaceToOpen, MenuBarVisibility, hasNativeTitlebar, useNativeFullScreen, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, TitlebarStyle, MenuSettings, getMacOSWindowControlsPosition } from '../../window/common/window.js';
+import { getMenuBarVisibility, IFolderToOpen, INativeWindowConfiguration, IWindowSettings, IWorkspaceToOpen, MenuBarVisibility, hasNativeTitlebar, useNativeFullScreen, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, TitlebarStyle, MenuSettings, ANDEN_MAC_WINDOW_CONTROLS_INSET, getMacOSWindowControlsPosition, useAndenIntegratedTitlebar } from '../../window/common/window.js';
 import { defaultBrowserWindowOptions, getAllWindowsExcludingOffscreen, isHiddenWindowMode, IWindowsMainService, OpenContext, WindowStateValidator } from './windows.js';
 import { ISingleFolderWorkspaceIdentifier, IWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
 import { IWorkspacesManagementMainService } from '../../workspaces/electron-main/workspacesManagementMainService.js';
@@ -802,6 +802,7 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 	private customZoomLevel: number | undefined = undefined;
 
 	private readonly configObjectUrl: IIPCObjectUrl<INativeWindowConfiguration>;
+	private readonly andenIntegratedTitlebar: boolean;
 	private pendingLoadConfig: INativeWindowConfiguration | undefined;
 	private wasLoaded = false;
 
@@ -864,7 +865,11 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 				webPreferences.backgroundThrottling = false; // keep agents window responsive when in background
 			}
 
-			const options = instantiationService.invokeFunction(defaultBrowserWindowOptions, this.windowState, undefined, webPreferences);
+			this.andenIntegratedTitlebar = !config.isSessionsWindow && useAndenIntegratedTitlebar(this.productService.andenSessionWorkbench, isMacintosh, this.configurationService.getValue<IWindowSettings>('window'));
+			const options = instantiationService.invokeFunction(defaultBrowserWindowOptions, this.windowState, this.andenIntegratedTitlebar ? { integratedMacTitlebar: true } : undefined, webPreferences);
+			if (this.andenIntegratedTitlebar) {
+				options.trafficLightPosition = getMacOSWindowControlsPosition(44, release(), ANDEN_MAC_WINDOW_CONTROLS_INSET) ?? undefined;
+			}
 			if (config.minimized) {
 				options.show = false; // a window that is created visible takes focus
 			}
@@ -1450,6 +1455,7 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		}
 
 		// Update window related properties
+		configuration.andenIntegratedTitlebar = this.andenIntegratedTitlebar;
 		try {
 			configuration.handle = VSBuffer.wrap(this._win.getNativeWindowHandle());
 		} catch (error) {

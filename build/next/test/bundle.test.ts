@@ -73,6 +73,23 @@ suite('desktop workbench startup encoding', () => {
 });
 
 suite('production bundle helpers', () => {
+	test('emits the local Anden interface font and rewrites its CSS URL', async () => {
+		const cssEntry = path.join(repoRoot, 'src/vs/workbench/contrib/anden/browser/media/andenWorkbench.css');
+		const outfile = path.join(repoRoot, 'out-test', 'workbench.css');
+		const result = await esbuild.build({
+			...getBundleOptions(true, 'neutral'),
+			entryPoints: [cssEntry],
+			outfile,
+			loader: bundleAssetLoaders,
+			assetNames: 'media/[name]',
+		});
+		const css = result.outputFiles?.find(file => file.path === outfile);
+		const font = result.outputFiles?.find(file => file.path === path.join(path.dirname(outfile), 'media', 'anden-google-sans.woff2'));
+		assert.ok(css && font);
+		assert.match(css.text, /url\(["']?\.\/media\/anden-google-sans\.woff2["']?\)/);
+		assert.strictEqual(Buffer.from(font.contents.subarray(0, 4)).toString('ascii'), 'wOF2');
+	});
+
 	for (const platform of ['neutral', 'node'] as const) {
 		for (const minify of [false, true]) {
 			suite(`${platform}, minify: ${minify}`, () => {
