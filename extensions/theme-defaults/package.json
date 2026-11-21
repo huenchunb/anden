@@ -14,6 +14,18 @@
   "contributes": {
     "themes": [
       {
+        "id": "Anden Light",
+        "label": "%andenLightThemeLabel%",
+        "uiTheme": "vs",
+        "path": "./themes/anden-light.json"
+      },
+      {
+        "id": "Anden Dark",
+        "label": "%andenDarkThemeLabel%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/anden-dark.json"
+      },
+      {
         "id": "Light 2026",
         "label": "%light2026ThemeLabel%",
         "uiTheme": "vs",

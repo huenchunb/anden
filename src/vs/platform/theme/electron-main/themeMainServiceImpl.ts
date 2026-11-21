@@ -17,6 +17,8 @@ import { coalesce } from '../../../base/common/arrays.js';
 import { getAllWindowsExcludingOffscreen } from '../../windows/electron-main/windows.js';
 import { ILogService, LogLevel } from '../../log/common/log.js';
 import { IThemeMainService } from './themeMainService.js';
+import product from '../../product/common/product.js';
+import { ANDEN_DARK_INITIAL_COLORS, ANDEN_LIGHT_INITIAL_COLORS, isAndenAutoDetectColorScheme } from '../common/andenTheme.js';
 
 // These default colors match our default themes
 // editor background color ("Dark Modern", etc...)
@@ -84,7 +86,7 @@ export class ThemeMainService extends Disposable implements IThemeMainService {
 		// System Theme
 		if (!isLinux) {
 			this._register(this.configurationService.onDidChangeConfiguration(e => {
-				if (e.affectsConfiguration(Setting.SYSTEM_COLOR_THEME.key) || e.affectsConfiguration(Setting.DETECT_COLOR_SCHEME.key)) {
+				if (e.affectsConfiguration(Setting.SYSTEM_COLOR_THEME.key) || e.affectsConfiguration(Setting.DETECT_COLOR_SCHEME.key) || (product.andenSessionWorkbench && e.affectsConfiguration('workbench.colorTheme'))) {
 					this.updateSystemColorTheme();
 					this.logThemeSettings();
 				}
@@ -181,10 +183,7 @@ export class ThemeMainService extends Disposable implements IThemeMainService {
 	}
 
 	isAutoDetectColorScheme(): boolean {
-		if (Setting.DETECT_COLOR_SCHEME.getValue(this.configurationService)) {
-			return true;
-		}
-		return false;
+		return product.andenSessionWorkbench ? isAndenAutoDetectColorScheme(this.configurationService) : Setting.DETECT_COLOR_SCHEME.getValue(this.configurationService);
 	}
 
 	getBackgroundColor(): string {
@@ -201,10 +200,10 @@ export class ThemeMainService extends Disposable implements IThemeMainService {
 
 		// Otherwise we return the default background for the preferred base theme. If there's no preferred, use the stored one.
 		switch (preferred ?? stored) {
-			case ThemeTypeSelector.VS: return DEFAULT_BG_LIGHT;
+			case ThemeTypeSelector.VS: return product.andenSessionWorkbench ? ANDEN_LIGHT_INITIAL_COLORS['editor.background'] : DEFAULT_BG_LIGHT;
 			case ThemeTypeSelector.HC_BLACK: return DEFAULT_BG_HC_BLACK;
 			case ThemeTypeSelector.HC_LIGHT: return DEFAULT_BG_HC_LIGHT;
-			default: return DEFAULT_BG_DARK;
+			default: return product.andenSessionWorkbench ? ANDEN_DARK_INITIAL_COLORS['editor.background'] : DEFAULT_BG_DARK;
 		}
 	}
 

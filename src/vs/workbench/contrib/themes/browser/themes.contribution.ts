@@ -34,6 +34,8 @@ import { KeybindingWeight } from '../../../../platform/keybinding/common/keybind
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { FileIconThemeData } from '../../../services/themes/browser/fileIconThemeData.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { isAndenAutoDetectColorScheme } from '../../../../platform/theme/common/andenTheme.js';
+import { useAndenThemeDefaults } from '../../../services/themes/common/themeConfiguration.js';
 import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 
@@ -802,7 +804,7 @@ registerAction2(class extends Action2 {
 		const notificationService = accessor.get(INotificationService);
 		const preferencesService = accessor.get(IPreferencesService);
 
-		if (configurationService.getValue(ThemeSettings.DETECT_COLOR_SCHEME)) {
+		if (useAndenThemeDefaults ? isAndenAutoDetectColorScheme(configurationService) : configurationService.getValue(ThemeSettings.DETECT_COLOR_SCHEME)) {
 			const message = localize({ key: 'cannotToggle', comment: ['{0} is a setting name'] }, "Cannot toggle between light and dark themes when `{0}` is enabled in settings.", ThemeSettings.DETECT_COLOR_SCHEME);
 			notificationService.prompt(Severity.Info, message, [
 				{

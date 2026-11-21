@@ -29,7 +29,8 @@ import { getRemoteAuthority } from '../../../../platform/remote/common/remoteHos
 import { IWorkbenchLayoutService } from '../../layout/browser/layoutService.js';
 import { IExtensionResourceLoaderService } from '../../../../platform/extensionResourceLoader/common/extensionResourceLoader.js';
 import { ThemeRegistry, registerColorThemeExtensionPoint, registerFileIconThemeExtensionPoint, registerProductIconThemeExtensionPoint } from '../common/themeExtensionPoints.js';
-import { updateColorThemeConfigurationSchemas, updateFileIconThemeConfigurationSchemas, ThemeConfiguration, updateProductIconThemeConfigurationSchemas } from '../common/themeConfiguration.js';
+import { updateColorThemeConfigurationSchemas, updateFileIconThemeConfigurationSchemas, ThemeConfiguration, updateProductIconThemeConfigurationSchemas, useAndenThemeDefaults } from '../common/themeConfiguration.js';
+import { ANDEN_DARK_THEME, ANDEN_LIGHT_THEME, ANDEN_DARK_INITIAL_COLORS, ANDEN_LIGHT_INITIAL_COLORS } from '../../../../platform/theme/common/andenTheme.js';
 import { ProductIconThemeData, DEFAULT_PRODUCT_ICON_THEME_ID } from './productIconThemeData.js';
 import { registerProductIconThemeSchemas } from '../common/productIconThemeSchema.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -156,7 +157,10 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
 			themeData = undefined;
 		}
 
-		const defaultColorMap = colorThemeSetting === ThemeSettingDefaults.COLOR_THEME_LIGHT ? COLOR_THEME_LIGHT_INITIAL_COLORS : colorThemeSetting === ThemeSettingDefaults.COLOR_THEME_DARK ? COLOR_THEME_DARK_INITIAL_COLORS : undefined;
+		const defaultColorMap = colorThemeSetting === ANDEN_LIGHT_THEME ? ANDEN_LIGHT_INITIAL_COLORS
+			: colorThemeSetting === ANDEN_DARK_THEME ? ANDEN_DARK_INITIAL_COLORS
+				: colorThemeSetting === ThemeSettingDefaults.COLOR_THEME_LIGHT ? COLOR_THEME_LIGHT_INITIAL_COLORS
+					: colorThemeSetting === ThemeSettingDefaults.COLOR_THEME_DARK ? COLOR_THEME_DARK_INITIAL_COLORS : undefined;
 		if (!themeData) {
 			const initialColorTheme = environmentService.options?.initialColorTheme;
 			if (initialColorTheme) {
@@ -164,7 +168,7 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
 			}
 		}
 		if (!themeData) {
-			const colorScheme = this.settings.getPreferredColorScheme() ?? (isWeb ? ColorScheme.LIGHT : ColorScheme.DARK);
+			const colorScheme = this.settings.getPreferredColorScheme() ?? (isWeb || colorThemeSetting === ANDEN_LIGHT_THEME ? ColorScheme.LIGHT : ColorScheme.DARK);
 			themeData = ColorThemeData.createUnloadedThemeForThemeType(colorScheme, defaultColorMap);
 		}
 		themeData.setCustomizations(this.settings);
@@ -216,8 +220,11 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
 				// If the current theme is not available, first make sure setting sync is complete
 				await this.userDataInitializationService.whenInitializationFinished();
 				// try to get the theme again, now with a fallback to the default themes
-				const fallbackTheme = this.currentColorTheme.type === ColorScheme.LIGHT ? ThemeSettingDefaults.COLOR_THEME_LIGHT : ThemeSettingDefaults.COLOR_THEME_DARK;
-				theme = this.colorThemeRegistry.findThemeBySettingsId(this.settings.colorTheme, fallbackTheme);
+				const light = this.currentColorTheme.type === ColorScheme.LIGHT;
+				const fallbackTheme = light ? ThemeSettingDefaults.COLOR_THEME_LIGHT : ThemeSettingDefaults.COLOR_THEME_DARK;
+				theme = this.colorThemeRegistry.findThemeBySettingsId(this.settings.colorTheme)
+					?? (useAndenThemeDefaults ? this.colorThemeRegistry.findThemeBySettingsId(light ? ANDEN_LIGHT_THEME : ANDEN_DARK_THEME) : undefined)
+					?? this.colorThemeRegistry.findThemeBySettingsId(fallbackTheme);
 			}
 			return this.setColorTheme(theme && theme.id, undefined);
 		};

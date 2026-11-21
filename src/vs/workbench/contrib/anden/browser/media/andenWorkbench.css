@@ -158,6 +158,7 @@
 .anden-workbench .anden-session-row:has([aria-current="true"]) {
 	color: var(--vscode-list-activeSelectionForeground);
 	background: var(--vscode-list-activeSelectionBackground);
+	box-shadow: inset 2px 0 var(--vscode-list-activeSelectionIconForeground, var(--vscode-list-activeSelectionForeground));
 }
 
 .anden-workbench .anden-session-select {

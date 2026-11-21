@@ -10,6 +10,7 @@ import { ThemeConfiguration } from '../../common/themeConfiguration.js';
 import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
 import { IHostColorSchemeService } from '../../common/hostColorSchemeService.js';
 import { Event } from '../../../../../base/common/event.js';
+import { isAndenAutoDetectColorScheme } from '../../../../../platform/theme/common/andenTheme.js';
 
 class TestHostColorSchemeService implements IHostColorSchemeService {
 	declare readonly _serviceBrand: undefined;
@@ -43,6 +44,24 @@ suite('WorkbenchThemeService', () => {
 				['Dark Modern', 'Dark 2026', 'Some Custom Theme', ''].map(migrateThemeSettingsId),
 				['Dark Modern', 'Dark 2026', 'Some Custom Theme', '']
 			);
+		});
+	});
+
+	suite('Anden appearance defaults', () => {
+		test('follows the system on an unconfigured profile', () => {
+			assert.strictEqual(isAndenAutoDetectColorScheme(new TestConfigurationService()), true);
+		});
+
+		test('preserves an explicit theme unless system detection was explicitly enabled', async () => {
+			const configuration = new TestConfigurationService({ [ThemeSettings.COLOR_THEME]: 'Dark Modern' });
+			assert.strictEqual(isAndenAutoDetectColorScheme(configuration), false);
+			await configuration.setUserConfiguration(ThemeSettings.DETECT_COLOR_SCHEME, true);
+			assert.strictEqual(isAndenAutoDetectColorScheme(configuration), true);
+		});
+
+		test('respects explicitly disabled system detection without a theme override', () => {
+			const configuration = new TestConfigurationService({ [ThemeSettings.DETECT_COLOR_SCHEME]: false });
+			assert.strictEqual(isAndenAutoDetectColorScheme(configuration), false);
 		});
 	});
 
