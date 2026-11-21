@@ -73,7 +73,7 @@ suite('desktop workbench startup encoding', () => {
 });
 
 suite('production bundle helpers', () => {
-	test('emits the local Anden interface font and rewrites its CSS URL', async () => {
+	test('emits the local Anden interface and terminal fonts and rewrites their CSS URLs', async () => {
 		const cssEntry = path.join(repoRoot, 'src/vs/workbench/contrib/anden/browser/media/andenWorkbench.css');
 		const outfile = path.join(repoRoot, 'out-test', 'workbench.css');
 		const result = await esbuild.build({
@@ -84,10 +84,13 @@ suite('production bundle helpers', () => {
 			assetNames: 'media/[name]',
 		});
 		const css = result.outputFiles?.find(file => file.path === outfile);
-		const font = result.outputFiles?.find(file => file.path === path.join(path.dirname(outfile), 'media', 'anden-google-sans.woff2'));
-		assert.ok(css && font);
-		assert.match(css.text, /url\(["']?\.\/media\/anden-google-sans\.woff2["']?\)/);
-		assert.strictEqual(Buffer.from(font.contents.subarray(0, 4)).toString('ascii'), 'wOF2');
+		assert.ok(css);
+		for (const fileName of ['anden-google-sans.woff2', 'anden-agave-nerd-font-mono-regular.woff2', 'anden-agave-nerd-font-mono-bold.woff2']) {
+			const font = result.outputFiles?.find(file => file.path === path.join(path.dirname(outfile), 'media', fileName));
+			assert.ok(font, `Missing bundled font: ${fileName}`);
+			assert.ok(css.text.includes(`./media/${fileName}`));
+			assert.strictEqual(Buffer.from(font.contents.subarray(0, 4)).toString('ascii'), 'wOF2');
+		}
 	});
 
 	for (const platform of ['neutral', 'node'] as const) {

@@ -18,7 +18,7 @@ On macOS, the main window keeps the native window buttons in the Sessions header
 
 ## Interface font
 
-The desktop window uses a bundled Google Sans variable font for UI text. Its Latin subset covers Spanish; other scripts fall back to the workbench's platform and locale fonts. Terminal rendering, editor font settings, and native system controls are unchanged.
+The desktop window uses a bundled Google Sans variable font for UI text. Its Latin subset covers Spanish; other scripts fall back to the workbench's platform and locale fonts. The interface font does not affect terminal rendering, editor font settings, or native system controls.
 
 `browser/media/anden-google-sans.woff2` is derived from the normal Google Sans v14.000 font in [Google Fonts, revision `06bfe0d`](https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/googlesans). The license and copyright notice are in [`licenses/google-sans-OFL.txt`](../../../../../licenses/google-sans-OFL.txt). To reproduce the asset from `GoogleSans[GRAD,opsz,wght].ttf` using FontTools 4.62.1 and Brotli 1.2.0:
 
@@ -29,3 +29,9 @@ pyftsubset 'GoogleSans[GRAD,opsz,wght].ttf' \
   --unicodes='U+0000-024F,U+0300-036F,U+1E00-1EFF,U+2000-20CF,U+2122,U+2212' \
   --layout-features='*'
 ```
+
+## Terminal font
+
+The default terminal font for both agents is **Agave Nerd Font Mono**, 14 px, with xterm's normal weight set to 500 and bold weight to 700. The bundled faces are Regular (400) and Bold (700); xterm requests the configured weight as it would in VS Code. The standard `terminal.integrated.font*` settings can override these defaults.
+
+The two `anden-agave-nerd-font-mono-*.woff2` assets in `browser/media` come from `AgaveNerdFontMono-{Regular,Bold}.ttf` in the [Nerd Fonts v3.5.1 Agave archive](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Agave.tar.xz). They were converted with FontTools 4.62.1 and Brotli 1.2.0 (`TTFont` with `recalcTimestamp=False`, saved with `flavor='woff2'`) without subsetting so the Nerd Font icons remain available. The distribution includes the [OFL license](../../../../../licenses/agave-nerd-font-OFL.txt) and [upstream glyph notices](../../../../../licenses/agave-nerd-font-notices.md).

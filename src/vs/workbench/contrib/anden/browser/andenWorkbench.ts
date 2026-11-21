@@ -26,7 +26,7 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
 import product from '../../../../platform/product/common/product.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
-import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
+import { TerminalLocation, TerminalSettingId } from '../../../../platform/terminal/common/terminal.js';
 import { ANDEN_MAC_WINDOW_CONTROLS_INSET } from '../../../../platform/window/common/window.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustRequestService } from '../../../../platform/workspace/common/workspaceTrust.js';
@@ -42,6 +42,10 @@ const agents = [
 type Agent = typeof agents[number];
 
 const switchSessionCommand = 'anden.switchSession';
+const terminalFontFamily = 'Agave Nerd Font Mono';
+const terminalFontSize = 14;
+const terminalFontWeight = 500;
+const terminalFontWeightBold = 700;
 
 if (product.andenSessionWorkbench) {
 	KeybindingsRegistry.registerKeybindingRule({
@@ -55,7 +59,18 @@ if (product.andenSessionWorkbench) {
 			type: 'string', default: '', description: localize('executablePath', "Absolute path to the {0} executable. Leave empty to use the shell PATH.", agent.label),
 		}])),
 	});
-	configuration.registerDefaultConfigurations([{ overrides: { 'chat.disableAIFeatures': true, 'onboarding.enabled': false, 'workbench.startupEditor': 'none', 'window.title': 'Anden' } }]);
+	configuration.registerDefaultConfigurations([{
+		overrides: {
+			'chat.disableAIFeatures': true,
+			'onboarding.enabled': false,
+			'workbench.startupEditor': 'none',
+			'window.title': 'Anden',
+			[TerminalSettingId.FontFamily]: terminalFontFamily,
+			[TerminalSettingId.FontSize]: terminalFontSize,
+			[TerminalSettingId.FontWeight]: terminalFontWeight,
+			[TerminalSettingId.FontWeightBold]: terminalFontWeightBold,
+		},
+	}]);
 }
 
 interface Session {
@@ -77,6 +92,7 @@ export class AndenWorkbench extends Disposable {
 	private readonly folderLabel: HTMLElement;
 	private readonly empty: HTMLElement;
 	private readonly newButton: HTMLButtonElement;
+	private terminalFontLoad: Promise<unknown> | undefined;
 	private creating = false;
 
 	private get selected(): Session | undefined {
@@ -202,6 +218,10 @@ export class AndenWorkbench extends Disposable {
 				this.notifications.error(localize('missingExecutable', "Could not find an executable for {0}. Install it or set {1} to an absolute executable path in User Settings.", agent.label, `anden.${agent.id}.executablePath`));
 				return;
 			}
+			await this.loadTerminalFont();
+			if (this._store.isDisposed) {
+				return;
+			}
 			const count = (this.counts.get(agent.id) ?? 0) + 1;
 			const label = localize('sessionName', "{0} · {1}", agent.label, count);
 			const terminal = await this.terminals.createTerminal({
@@ -219,6 +239,21 @@ export class AndenWorkbench extends Disposable {
 		} finally {
 			this.creating = false;
 		}
+	}
+
+	private async loadTerminalFont(): Promise<void> {
+		const families = this.configuration.getValue<string>(TerminalSettingId.FontFamily);
+		if (!families?.split(',').some(family => family.trim().replace(/^(['"])(.*)\1$/, '$2').toLowerCase() === terminalFontFamily.toLowerCase())) {
+			return;
+		}
+
+		// Load both faces before xterm measures its cells or populates the glyph atlas.
+		// A missing face must not prevent a session from launching with the fallback font.
+		const { fonts } = this.content.ownerDocument;
+		await (this.terminalFontLoad ??= Promise.allSettled([
+			fonts.load(`${terminalFontWeight} ${terminalFontSize}px "${terminalFontFamily}"`),
+			fonts.load(`${terminalFontWeightBold} ${terminalFontSize}px "${terminalFontFamily}"`),
+		]));
 	}
 
 	private async pickFolder(): Promise<URI | undefined> {
