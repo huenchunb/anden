@@ -6,7 +6,7 @@
 import { $, append } from '../../../../base/browser/dom.js';
 import './media/andenIcons.css';
 
-export type AndenIcon = 'agent-pi' | 'agent-codex' | 'git' | 'branch' | 'sessions' | 'chat' | 'folder'
+export type AndenIcon = 'agent-pi' | 'git' | 'branch' | 'sessions' | 'chat' | 'folder'
 	| 'status-ready' | 'status-working' | 'status-waiting' | 'status-interrupted' | 'status-error' | 'status-disconnected' | 'status-completed'
 	| 'new' | 'more' | 'rename' | 'close' | 'back' | 'expand' | 'send' | 'stop' | 'latest' | 'copy' | 'refresh'
 	| 'read' | 'edit' | 'search' | 'command' | 'test' | 'tool' | 'shield' | 'question'

@@ -5,7 +5,6 @@
 
 .anden-workbench {
 	--anden-icon-pi: #b58cff;
-	--anden-icon-codex: #45d4eb;
 	--anden-icon-repository: #ff8a57;
 	--anden-icon-activity: #d3b3f2;
 	--anden-icon-attention: #f6c35b;
@@ -15,7 +14,6 @@
 
 .vs .anden-workbench {
 	--anden-icon-pi: #6941a5;
-	--anden-icon-codex: #006b7a;
 	--anden-icon-repository: #a13d16;
 	--anden-icon-activity: #61428c;
 	--anden-icon-attention: #805400;
@@ -25,7 +23,6 @@
 
 :is(.hc-black, .hc-light) .anden-workbench {
 	--anden-icon-pi: currentColor;
-	--anden-icon-codex: currentColor;
 	--anden-icon-repository: currentColor;
 	--anden-icon-activity: currentColor;
 	--anden-icon-attention: currentColor;
@@ -50,20 +47,19 @@
 	background-color: currentColor;
 }
 
-.anden-icon:is(.anden-icon-agent-pi, .anden-icon-agent-codex) {
+.anden-icon.anden-icon-agent-pi {
 	width: 20px;
 	height: 20px;
 	border-radius: 5px;
 }
 
-.anden-icon:is(.anden-icon-agent-pi, .anden-icon-agent-codex)::before {
+.anden-icon.anden-icon-agent-pi::before {
 	width: 14px;
 	height: 14px;
 	background-color: var(--anden-icon-ink);
 }
 
 .anden-icon-agent-pi { background-color: var(--anden-icon-pi); }
-.anden-icon-agent-codex { background-color: var(--anden-icon-codex); }
 .anden-icon-git { color: var(--anden-icon-repository); }
 .anden-icon-chat, .anden-icon-sessions, .anden-icon-status-working { color: var(--anden-icon-activity); }
 .anden-icon-status-waiting, .anden-icon-shield, .anden-icon-question, .anden-icon-conflict { color: var(--anden-icon-attention); }
@@ -92,10 +88,6 @@
 
 .anden-icon-agent-pi {
 	--anden-icon-image: url(./icons/agent-pi.svg);
-}
-
-.anden-icon-agent-codex {
-	--anden-icon-image: url(./icons/agent-codex.svg);
 }
 
 .anden-icon-git {

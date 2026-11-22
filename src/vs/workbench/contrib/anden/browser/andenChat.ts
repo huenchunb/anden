@@ -9,20 +9,43 @@ import { MarkdownString } from '../../../../base/common/htmlContent.js';
 import { Disposable, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { EditorMarkdownCodeBlockRenderer } from '../../../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
 import { localize } from '../../../../nls.js';
+import { AndenHistoryRecord } from '../../../../platform/anden/common/andenHistory.js';
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMarkdownRendererService } from '../../../../platform/markdown/browser/markdownRenderer.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
-import { AndenActivity, AndenAgentKind, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenRequest, AndenTool } from '../common/andenAgent.js';
+import { AndenActivity, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenModel, AndenModelRef, AndenModelSettings, AndenReasoningOption, AndenRequest, AndenTool } from '../common/andenAgent.js';
 import { andenButton, andenIcon, AndenIcon } from './andenIcons.js';
 import './media/andenChat.css';
 
 interface AndenChatActions {
+	onDraftChange(text: string): void;
 	send(text: string): Promise<void>;
 	stop(): Promise<void>;
+	listModels(): Promise<readonly AndenModel[]>;
+	selectModel(model: AndenModelRef): Promise<void>;
+	listReasoning(): Promise<readonly AndenReasoningOption[]>;
+	selectReasoning(level: string): Promise<void>;
 	answer(id: string, answer: AndenAnswer): Promise<void>;
 	showFile(path: string): boolean;
+}
+
+const sessionCommands = ['/model', '/reasoning', '/settings'] as const;
+type SessionCommand = typeof sessionCommands[number];
+
+function reasoningLabel(level: string): string {
+	switch (level) {
+		case 'off': case 'none': return localize('reasoningOff', 'Off');
+		case 'minimal': return localize('reasoningMinimal', 'Minimal');
+		case 'low': return localize('reasoningLow', 'Low');
+		case 'medium': return localize('reasoningMedium', 'Medium');
+		case 'high': return localize('reasoningHigh', 'High');
+		case 'xhigh': return localize('reasoningExtraHigh', 'Extra high');
+		case 'max': return localize('reasoningMax', 'Maximum');
+		default: return level;
+	}
 }
 
 interface MarkdownBlock {
@@ -51,6 +74,13 @@ export class AndenChat extends Disposable {
 	private readonly input: HTMLTextAreaElement;
 	private readonly sendButton: HTMLButtonElement;
 	private readonly stopButton: HTMLButtonElement;
+	private readonly modelButton: HTMLButtonElement;
+	private readonly reasoningButton: HTMLButtonElement;
+	private readonly commandSuggestions: HTMLElement;
+	private readonly commandButtons = new Map<SessionCommand, HTMLButtonElement>();
+	private modelSettings: AndenModelSettings = {};
+	private settingsOpen = false;
+	private commandSuggestionsDismissed = false;
 	private readonly requestButton: HTMLButtonElement;
 	private readonly latest: HTMLButtonElement;
 	private readonly status: HTMLElement;
@@ -62,6 +92,7 @@ export class AndenChat extends Disposable {
 	private readonly requests = new Map<string, { element: HTMLElement; form: HTMLElement }>();
 	private readonly renderPending = this._register(new RunOnceScheduler(() => this.renderMarkdown(), 50));
 	private busySending = false;
+	private draftInFlight = '';
 	private following = true;
 	private state: AndenAgentState = 'starting';
 	private activity: AndenActivity | undefined;
@@ -73,12 +104,11 @@ export class AndenChat extends Disposable {
 
 	constructor(
 		private readonly root: HTMLElement,
-		private readonly agent: AndenAgentKind,
-		private readonly agentLabel: string,
-		private readonly actions: AndenChatActions,
+		private readonly actions: AndenChatActions | undefined,
 		@IMarkdownRendererService private readonly markdown: IMarkdownRendererService,
 		@IOpenerService private readonly opener: IOpenerService,
 		@IClipboardService private readonly clipboard: IClipboardService,
+		@IQuickInputService private readonly quickInput: IQuickInputService,
 		@IInstantiationService instantiation: IInstantiationService,
 		@IThemeService theme: IThemeService,
 	) {
@@ -88,8 +118,9 @@ export class AndenChat extends Disposable {
 		this.messages = append(this.transcript, $('div.anden-messages'));
 		this.empty = append(this.messages, $('div.anden-chat-empty'));
 		append(this.empty, andenIcon('chat'));
-		append(this.empty, $('h3', {}, localize('chatEmpty', 'Start a conversation with {0}', agentLabel)));
+		append(this.empty, $('h3', {}, actions ? localize('chatEmpty', 'Start a conversation with Pi') : localize('emptySavedChat', 'No saved messages')));
 		const panel = append(root, $('div.anden-composer'));
+		panel.hidden = !actions;
 		this.latest = append(panel, andenButton(localize('chatLatest', 'Go to latest'), 'latest'));
 		this.latest.hidden = true;
 		const activity = append(panel, $('div.anden-chat-activity'));
@@ -98,19 +129,37 @@ export class AndenChat extends Disposable {
 		this.requestButton = append(activityControls, andenButton(localize('chatReviewRequest', 'Go to request'), 'question'));
 		this.requestButton.onclick = () => this.focus(true);
 		this.stopButton = append(activityControls, andenButton(localize('chatStop', 'Stop'), 'stop'));
-		this.input = append(panel, $<HTMLTextAreaElement>('textarea.anden-chat-input', { rows: '3', maxlength: '65536', placeholder: localize('chatPlaceholder', 'Message {0}…', agentLabel), 'aria-label': localize('chatMessage', 'Message for {0}', agentLabel) }));
+		this.input = append(panel, $<HTMLTextAreaElement>('textarea.anden-chat-input', { rows: '3', maxlength: '65536', placeholder: localize('chatPlaceholder', 'Message Pi…'), 'aria-label': localize('chatMessage', 'Message for Pi') }));
+		this.commandSuggestions = append(panel, $('div.anden-command-suggestions', { role: 'group', 'aria-label': localize('sessionCommands', 'Session commands') }));
+		for (const command of sessionCommands) {
+			const button = append(this.commandSuggestions, $<HTMLButtonElement>('button', { type: 'button' }, command));
+			button.onclick = () => void this.runCommand(command, true);
+			this.commandButtons.set(command, button);
+		}
 		const actionsBar = append(panel, $('div.anden-composer-actions'));
+		const modelActions = append(actionsBar, $('div.anden-model-actions'));
+		this.modelButton = append(modelActions, $<HTMLButtonElement>('button.anden-model-button', { type: 'button', 'aria-haspopup': 'listbox' }));
+		this.modelButton.onclick = () => void this.runCommand('/model');
+		this.reasoningButton = append(modelActions, $<HTMLButtonElement>('button.anden-reasoning-button', { type: 'button', 'aria-haspopup': 'listbox' }));
+		this.reasoningButton.onclick = () => void this.runCommand('/reasoning');
 		this.sendButton = append(actionsBar, andenButton(localize('chatSend', 'Send'), 'send'));
 		this.sendButton.classList.add('anden-primary');
-		this.input.oninput = () => this.renderStatus();
+		this.input.oninput = () => { this.commandSuggestionsDismissed = false; this.publishDraft(); this.renderStatus(); };
 		this.input.onkeydown = event => {
+			if (event.key === 'Escape' && !this.commandSuggestions.hidden && !event.isComposing) {
+				event.preventDefault();
+				event.stopPropagation();
+				this.commandSuggestionsDismissed = true;
+				this.renderStatus();
+				return;
+			}
 			if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
 				event.preventDefault();
 				void this.send();
 			}
 		};
 		this.sendButton.onclick = () => void this.send();
-		this.stopButton.onclick = () => void this.actions.stop().catch(error => this.showError(error));
+		this.stopButton.onclick = () => void this.actions?.stop().catch(error => this.showError(error));
 		this.latest.onclick = () => { this.following = true; this.scrollToEnd(); };
 		this.transcript.onscroll = () => {
 			if (root.hidden) { return; }
@@ -129,11 +178,31 @@ export class AndenChat extends Disposable {
 		if (pending) {
 			this.following = false;
 			pending.element.focus();
-		} else if (this.input.disabled) {
+		} else if (!this.actions || this.input.disabled) {
 			this.transcript.focus();
 		} else {
 			this.input.focus();
 		}
+	}
+
+	setDraft(text: string): void {
+		this.input.value = text;
+		this.publishDraft();
+		this.renderStatus();
+	}
+
+	private publishDraft(): void {
+		this.actions?.onDraftChange(this.input.value || this.draftInFlight);
+	}
+
+	restoreHistory(record: AndenHistoryRecord): void {
+		if (record.truncated) { this.notice(localize('limitedSavedChat', 'Some messages were shortened or omitted because the saved conversation exceeded its size limit.')); }
+		for (const [index, message] of record.messages.entries()) {
+			const id = `history:${index}`;
+			this.update(message.role === 'user' ? { kind: 'user', id, text: message.text } : { kind: 'text', id, text: message.text, append: false });
+			if (!message.complete) { this.notice(message.role === 'user' ? localize('unconfirmedSavedMessage', 'Send not confirmed') : localize('incompleteSavedMessage', 'Incomplete response')); }
+		}
+		if (this.actions) { this.setDraft(record.draft); }
 	}
 
 	update(update: AndenAgentUpdate): void {
@@ -144,6 +213,12 @@ export class AndenChat extends Disposable {
 				append(article, $('div.anden-chat-user-text', {}, update.text));
 				break;
 			}
+			case 'piSession':
+			case 'userAccepted': return;
+			case 'modelSettings':
+				this.modelSettings = update.settings;
+				this.renderStatus();
+				return;
 			case 'text': this.updateText(update.id, update.text, update.append); break;
 			case 'notice': this.notice(update.text); break;
 			case 'tool': this.updateTool(update.tool); break;
@@ -176,65 +251,123 @@ export class AndenChat extends Disposable {
 	private addRequest(request: AndenRequest): void {
 		if (this.requests.has(request.id)) { return; }
 		this.empty.hidden = true;
-		const title = request.title || (request.kind === 'command' ? localize('approveCommand', 'Approve command') : request.kind === 'files' ? localize('approveFiles', 'Approve file changes') : request.kind === 'permissions' ? localize('approvePermissions', 'Approve additional permissions') : request.kind === 'questions' ? localize('agentQuestions', 'The agent has a question') : localize('agentConfirmation', 'Confirmation required'));
+		const title = request.title || (request.kind === 'input' ? localize('piInput', 'Pi needs an answer') : localize('agentConfirmation', 'Confirmation required'));
 		const card = append(this.messages, $('section.anden-request', { tabindex: '-1', 'aria-label': title }));
 		const heading = append(card, $('h3.anden-chat-label'));
-		append(heading, andenIcon(request.kind === 'questions' ? 'question' : 'shield'));
+		append(heading, andenIcon(request.kind === 'input' ? 'question' : 'shield'));
 		append(heading, $('span', {}, title));
-		if (request.detail) { append(card, $('pre.anden-request-detail', {}, request.detail)); }
+		if (request.kind === 'confirm' && request.detail) { append(card, $('pre.anden-request-detail', {}, request.detail)); }
 		const form = append(card, $('div.anden-request-form'));
-		const fields = request.questions?.map(question => {
+		let readValue: (() => string | undefined) | undefined;
+		if (request.kind === 'input') {
 			const label = append(form, $('label.anden-request-field'));
-			append(label, $('span', {}, question.label));
-			if (question.options?.length && !question.secret) {
+			append(label, $('span', {}, title));
+			if (request.options.length) {
 				const select = append(label, $<HTMLSelectElement>('select'));
 				append(select, $('option', { value: '' }, localize('selectOption', 'Select an option')));
-				question.options.forEach((option, index) => append(select, $('option', { value: String(index), title: option.description }, option.description ? `${option.label} — ${option.description}` : option.label)));
-				const other = question.other ? append(label, $<HTMLInputElement>('input', { type: 'text', maxlength: '65536', 'aria-label': localize('otherAnswer', 'Other answer') })) : undefined;
-				if (other) {
-					append(select, $('option', { value: 'other' }, localize('otherOption', 'Other…')));
-					other.hidden = true;
-					select.onchange = () => { other.hidden = select.value !== 'other'; };
-				}
-				return { id: question.id, read: () => select.value === 'other' ? other?.value : select.value === '' ? undefined : question.options?.[Number(select.value)]?.label };
+				request.options.forEach((option, index) => append(select, $('option', { value: String(index) }, option)));
+				readValue = () => select.value === '' ? undefined : request.options[Number(select.value)];
+			} else {
+				const input = append(label, $<HTMLTextAreaElement>('textarea', { rows: '2', maxlength: '65536' }));
+				input.value = request.value ?? '';
+				readValue = () => input.value;
 			}
-			const input = question.secret ? append(label, $<HTMLInputElement>('input', { type: 'password', autocomplete: 'off', maxlength: '65536' })) : append(label, $<HTMLTextAreaElement>('textarea', { rows: '2', maxlength: '65536' }));
-			input.value = question.secret ? '' : question.value ?? '';
-			return { id: question.id, read: () => input.value };
-		});
+		}
 		const feedback = append(form, $('div.anden-request-feedback', { role: 'status' }));
 		const buttons = append(form, $('div.anden-request-actions'));
 		const reply = async (answer: AndenAnswer) => {
 			decline.disabled = allow.disabled = true;
-			try { await this.actions.answer(request.id, answer); }
+			try { await this.actions?.answer(request.id, answer); }
 			catch (error) {
 				feedback.textContent = error instanceof Error ? error.message : localize('answerFailed', 'The answer could not be sent.');
 				decline.disabled = allow.disabled = false;
 			}
 		};
-		const decline = append(buttons, andenButton(request.kind === 'questions' ? localize('cancelRequest', 'Cancel') : localize('denyRequest', 'Decline'), 'close'));
-		const allowLabel = request.kind === 'questions' ? localize('answerRequest', 'Submit answer') : request.kind === 'confirm' ? localize('confirmRequest', 'Confirm') : request.kind === 'permissions' ? localize('allowTurn', 'Allow for this turn') : localize('allowOnce', 'Allow once');
-		const allow = append(buttons, andenButton(allowLabel, 'status-completed'));
-		decline.onclick = () => void reply({ kind: request.kind === 'questions' ? 'cancel' : 'decline' });
+		const decline = append(buttons, andenButton(request.kind === 'input' ? localize('cancelRequest', 'Cancel') : localize('denyRequest', 'Decline'), 'close'));
+		const allow = append(buttons, andenButton(request.kind === 'input' ? localize('answerRequest', 'Submit answer') : localize('confirmRequest', 'Confirm'), 'status-completed'));
+		decline.onclick = () => void reply({ kind: request.kind === 'input' ? 'cancel' : 'decline' });
 		allow.onclick = () => {
-			if (!fields) { void reply({ kind: 'allow' }); return; }
-			const values = fields.map(field => ({ id: field.id, value: field.read() }));
-			if (values.some(entry => entry.value === undefined)) { feedback.textContent = localize('answerRequired', 'Select an answer for each question.'); return; }
-			void reply({ kind: 'answers', values: values.map(entry => ({ id: entry.id, value: entry.value ?? '' })) });
+			if (!readValue) { void reply({ kind: 'allow' }); return; }
+			const value = readValue();
+			if (value === undefined) { feedback.textContent = localize('answerRequired', 'Select an answer.'); return; }
+			void reply({ kind: 'value', value });
 		};
 		this.requests.set(request.id, { element: card, form });
 	}
 
+	private get canConfigure(): boolean {
+		return !!this.actions && !this.busySending && !this.settingsOpen && !this.pending && ['ready', 'interrupted', 'error'].includes(this.state);
+	}
+
+	private async runCommand(command: SessionCommand, fromInput = false): Promise<void> {
+		if (!this.canConfigure) { return; }
+		if (fromInput) { this.setDraft(''); }
+		this.settingsOpen = true;
+		this.renderStatus();
+		try {
+			let choice = command;
+			if (choice === '/settings') {
+				const current = this.modelSettings;
+				const selection = await this.quickInput.pick([
+					{ command: '/model' as const, label: localize('sessionModelOption', 'Model'), description: current.model?.label },
+					{ command: '/reasoning' as const, label: localize('sessionReasoningOption', 'Reasoning'), description: current.reasoning ? reasoningLabel(current.reasoning) : undefined },
+				], { title: localize('chatSessionSettings', 'Session settings'), placeHolder: localize('chooseSessionSetting', 'Choose a setting for this session') });
+				if (!selection || this._store.isDisposed || this.root.hidden) { return; }
+				choice = selection.command;
+			}
+			if (choice === '/model') { await this.pickModel(); }
+			else { await this.pickReasoning(); }
+		} catch (error) { this.showError(error); }
+		finally {
+			this.settingsOpen = false;
+			if (!this._store.isDisposed) {
+				this.renderStatus();
+				if (!this.root.hidden) { this.focus(); }
+			}
+		}
+	}
+
+	private async pickModel(): Promise<void> {
+		const actions = this.actions;
+		if (!actions) { return; }
+		const models = await actions.listModels();
+		if (this._store.isDisposed || this.root.hidden) { return; }
+		if (!models.length) { throw new Error(localize('noSessionModels', 'The agent did not report any available models.')); }
+		const current = this.modelSettings.model;
+		const selected = (model: AndenModel) => model.id === current?.id && model.provider === current.provider;
+		const options = models.map(model => ({
+			model,
+			label: model.label,
+			description: [model.provider, model.id !== model.label ? model.id : undefined, selected(model) ? localize('selectedModel', 'Selected') : undefined].filter(Boolean).join(' · '),
+		}));
+		const result = await this.quickInput.pick(options, { title: localize('chooseModel', 'Choose Model'), placeHolder: localize('searchModels', 'Search models for this session'), matchOnDescription: true, activeItem: options.find(option => selected(option.model)) });
+		if (result && !this._store.isDisposed && !this.root.hidden) { await actions.selectModel({ id: result.model.id, provider: result.model.provider }); }
+	}
+
+	private async pickReasoning(): Promise<void> {
+		const actions = this.actions;
+		if (!actions) { return; }
+		const levels = await actions.listReasoning();
+		if (this._store.isDisposed || this.root.hidden) { return; }
+		if (!levels.length) { throw new Error(localize('noSessionReasoning', 'The agent did not report reasoning levels for this model.')); }
+		const options = levels.map(level => ({ level, label: reasoningLabel(level.id), description: level.id === this.modelSettings.reasoning ? localize('selectedReasoning', 'Selected') : undefined }));
+		const result = await this.quickInput.pick(options, { title: localize('chooseReasoning', 'Choose Reasoning Level'), placeHolder: localize('searchReasoning', 'Choose a level for this session'), activeItem: options.find(option => option.level.id === this.modelSettings.reasoning) });
+		if (result && !this._store.isDisposed && !this.root.hidden) { await actions.selectReasoning(result.level.id); }
+	}
+
 	private async send(): Promise<void> {
-		if (this.sendButton.disabled) { return; }
+		if (!this.actions || this.sendButton.disabled) { return; }
 		const value = this.input.value;
+		const command = sessionCommands.find(command => command === value.trim());
+		if (command) { await this.runCommand(command, true); return; }
+		this.draftInFlight = value;
 		this.input.value = '';
 		this.busySending = true;
 		this.following = true;
 		this.renderStatus();
 		try { await this.actions.send(value); }
 		catch (error) { if (!this.input.value) { this.input.value = value; } this.showError(error); }
-		finally { this.busySending = false; this.renderStatus(); }
+		finally { this.draftInFlight = ''; this.publishDraft(); this.busySending = false; this.renderStatus(); }
 	}
 
 	private renderStatus(): void {
@@ -250,7 +383,22 @@ export class AndenChat extends Disposable {
 		this.stopButton.hidden = !this.active || this.state === 'starting' || this.state === 'disconnected';
 		this.stopButton.disabled = this.state !== 'working';
 		this.input.disabled = this.state === 'disconnected';
-		this.sendButton.disabled = this.busySending || this.pending || !['ready', 'interrupted', 'error'].includes(this.state) || !this.input.value.trim();
+		const model = this.modelSettings.model;
+		const label = model?.label || localize('defaultModel', 'Default model');
+		this.modelButton.textContent = label;
+		this.modelButton.title = localize('changeModelLabel', 'Change model: {0}', label);
+		this.modelButton.setAttribute('aria-label', this.modelButton.title);
+		const level = this.modelSettings.reasoning;
+		const reasoning = level ? reasoningLabel(level) : undefined;
+		this.reasoningButton.textContent = reasoning ? localize('currentReasoning', 'Reasoning: {0}', reasoning) : localize('sessionReasoningOption', 'Reasoning');
+		this.reasoningButton.title = reasoning ? localize('changeCurrentReasoning', 'Change reasoning level: {0}', reasoning) : localize('changeReasoning', 'Change reasoning level');
+		this.reasoningButton.setAttribute('aria-label', this.reasoningButton.title);
+		this.modelButton.disabled = this.reasoningButton.disabled = !this.canConfigure;
+		const input = this.input.value.trim();
+		const showSuggestions = this.canConfigure && !this.commandSuggestionsDismissed && input.startsWith('/');
+		for (const [command, button] of this.commandButtons) { button.hidden = !showSuggestions || !command.startsWith(input); }
+		this.commandSuggestions.hidden = ![...this.commandButtons.values()].some(button => !button.hidden);
+		this.sendButton.disabled = !this.canConfigure || !input;
 	}
 
 	private updateText(id: string, value: string, incremental: boolean): void {
@@ -258,7 +406,7 @@ export class AndenChat extends Disposable {
 		let block = this.blocks.get(id);
 		if (!block) {
 			if (!value) { return; }
-			const article = this.article(this.agentLabel, this.agent === 'pi' ? 'agent-pi' : 'agent-codex');
+			const article = this.article('Pi', 'agent-pi');
 			block = { text: '', complete: false, element: append(article, $('div.anden-markdown')), render: this._register(new MutableDisposable()) };
 			this.blocks.set(id, block);
 		}
@@ -324,7 +472,7 @@ export class AndenChat extends Disposable {
 					output.textContent = current.output || localize('toolNoOutput', 'No output');
 					jump.hidden = current.kind !== 'edit' || !current.path;
 					jump.onclick = () => {
-						if (!current.path || !this.actions.showFile(current.path)) { targetMessage.textContent = localize('toolNoChange', 'No reviewable change for this file.'); }
+						if (!current.path || !this.actions?.showFile(current.path)) { targetMessage.textContent = localize('toolNoChange', 'No reviewable change for this file.'); }
 					};
 				}
 			};

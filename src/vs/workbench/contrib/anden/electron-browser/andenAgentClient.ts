@@ -9,7 +9,7 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { localize } from '../../../../nls.js';
 import { IUtilityProcessWorkerWorkbenchService } from '../../../services/utilityProcess/electron-browser/utilityProcessWorkerWorkbenchService.js';
-import { andenAgentChannel, AndenAgentUpdate, AndenAnswer, AndenLaunchOptions, IAndenAgentProcess } from '../common/andenAgent.js';
+import { andenAgentChannel, AndenAgentUpdate, AndenAnswer, AndenLaunchOptions, AndenModelRef, IAndenAgentProcess } from '../common/andenAgent.js';
 
 export class AndenAgentClient extends Disposable {
 	private connection: Promise<IAndenAgentProcess> | undefined;
@@ -40,16 +40,19 @@ export class AndenAgentClient extends Disposable {
 		return proxy;
 	}
 
-	async start(options: AndenLaunchOptions): Promise<void> {
+	async start(options: AndenLaunchOptions): Promise<boolean> {
 		this.sessions.add(options.sessionId);
 		try {
 			const connection = this.connection ??= this.connect().catch(error => { this.connection = undefined; throw error; });
 			const proxy = await connection;
-			if (this.sessions.has(options.sessionId)) { await proxy.start(options); }
+			if (!this.sessions.has(options.sessionId)) { return false; }
+			await proxy.start(options);
+			return this.sessions.has(options.sessionId);
 		} catch (error) {
 			if (this.sessions.delete(options.sessionId)) {
 				this.updates.fire({ sessionId: options.sessionId, update: { kind: 'state', state: 'disconnected', error: error instanceof Error ? error.message : localize('launchFailed', 'Could not start the agent.') } });
 			}
+			return false;
 		}
 	}
 
@@ -61,6 +64,10 @@ export class AndenAgentClient extends Disposable {
 
 	async send(id: string, text: string): Promise<void> { await (await this.requireConnection(id)).send(id, text); }
 	async stop(id: string): Promise<void> { await (await this.requireConnection(id)).stop(id); }
+	async listModels(id: string) { return (await this.requireConnection(id)).listModels(id); }
+	async selectModel(id: string, model: AndenModelRef): Promise<void> { await (await this.requireConnection(id)).selectModel(id, model); }
+	async listReasoning(id: string) { return (await this.requireConnection(id)).listReasoning(id); }
+	async selectReasoning(id: string, level: string): Promise<void> { await (await this.requireConnection(id)).selectReasoning(id, level); }
 	async answer(id: string, request: string, answer: AndenAnswer): Promise<void> { await (await this.requireConnection(id)).answer(id, request, answer); }
 	async close(id: string): Promise<void> {
 		if (!this.sessions.delete(id)) { return; }

@@ -11,7 +11,7 @@ suite('Anden session names', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('uses folder and agent instead of a global agent ordinal', () => {
-		assert.strictEqual(suggestSessionName('anden', 'Pi', ['docs · Pi', 'anden · Codex']), 'anden · Pi');
+		assert.strictEqual(suggestSessionName('anden', 'Pi', ['docs · Pi', 'other · Pi']), 'anden · Pi');
 	});
 
 	test('suggests the first available suffix when the base name is in use', () => {

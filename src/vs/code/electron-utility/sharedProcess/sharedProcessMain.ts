@@ -36,6 +36,8 @@ import { ExtensionManagementChannel, ExtensionTipsChannel } from '../../../platf
 import { ExtensionManagementService, INativeServerExtensionManagementService } from '../../../platform/extensionManagement/node/extensionManagementService.js';
 import { IExtensionRecommendationNotificationService } from '../../../platform/extensionRecommendations/common/extensionRecommendations.js';
 import { IFileService } from '../../../platform/files/common/files.js';
+import { andenHistoryChannel } from '../../../platform/anden/common/andenHistory.js';
+import { AndenHistoryChannel } from '../../../platform/anden/node/andenHistoryChannel.js';
 import { FileService } from '../../../platform/files/common/fileService.js';
 import { DiskFileSystemProvider } from '../../../platform/files/node/diskFileSystemProvider.js';
 import { IGitHubService } from '../../../platform/github/common/githubService.js';
@@ -447,6 +449,9 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 	private initChannels(accessor: ServicesAccessor): void {
 
 		const instantiationService = accessor.get(IInstantiationService);
+		const history = new AndenHistoryChannel(accessor.get(IFileService), accessor.get(IUserDataProfilesService));
+		this.server.registerChannel(andenHistoryChannel, history);
+		this._register(this.server.onDidRemoveConnection(({ ctx }) => history.releaseWindow(ctx)));
 		this._register(registerGitHubChannel(this.server, accessor.get(IGitHubService)));
 		this.server.registerChannel(agentHostMcpOAuthMetadataChannelName, ProxyChannel.fromService(instantiationService.createInstance(AgentHostMcpOAuthMetadataService), this._store));
 

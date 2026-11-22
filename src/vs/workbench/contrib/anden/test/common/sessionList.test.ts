@@ -12,14 +12,14 @@ suite('Anden SessionList', () => {
 
 	test('switching selects the existing session and preserves all entries', () => {
 		const list = new SessionList<object>();
-		const pi = {};
-		const codex = {};
-		list.add(pi);
-		list.add(codex);
-		list.select(pi);
-		list.select(codex);
-		assert.strictEqual(list.active, codex);
-		assert.deepStrictEqual([...list.values()], [pi, codex]);
+		const first = {};
+		const second = {};
+		list.add(first);
+		list.add(second);
+		list.select(first);
+		list.select(second);
+		assert.strictEqual(list.active, second);
+		assert.deepStrictEqual([...list.values()], [first, second]);
 	});
 
 	test('closing the active session selects a surviving session or the empty state', () => {

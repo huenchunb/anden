@@ -5,33 +5,28 @@
 
 import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
-import { AndenAgentKind, AndenAgentUpdate } from '../../common/andenAgent.js';
+import { AndenPiSession } from '../../../../../platform/anden/common/andenHistory.js';
+import { AndenAgentUpdate } from '../../common/andenAgent.js';
 import { AndenAgentProtocol } from '../../common/andenAgentProtocol.js';
 import { AndenJsonLines } from '../../common/andenJsonLines.js';
 
 suite('Anden agent protocol', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	function create(agent: AndenAgentKind) {
+	function create(resume?: AndenPiSession) {
 		const sent: Record<string, unknown>[] = [];
 		const events: AndenAgentUpdate[] = [];
-		const protocol = new AndenAgentProtocol(agent, '/example', value => sent.push(value), event => events.push(event));
+		const protocol = new AndenAgentProtocol('/example', value => sent.push(value), event => events.push(event), resume);
 		const receive = (value: unknown) => protocol.receive(value);
 		const last = () => sent.at(-1);
-		const reply = (result: unknown) => receive(agent === 'pi' ? { id: last()?.id, type: 'response', success: true, data: result } : { id: last()?.id, result });
-		const start = async () => {
+		const reply = (result: unknown) => receive({ id: last()?.id, type: 'response', success: true, data: result });
+		const settings = () => events.filter(event => event.kind === 'modelSettings').at(-1)?.settings;
+		const start = async (state: Record<string, unknown> = {}) => {
 			const starting = protocol.start();
-			if (agent === 'pi') { reply({ isStreaming: false }); }
-			else {
-				assert.strictEqual(last()?.method, 'initialize');
-				reply({});
-				await Promise.resolve();
-				assert.deepStrictEqual(last()?.params, { cwd: '/example', ephemeral: true });
-				reply({ thread: { id: 'thread' } });
-			}
+			reply({ isStreaming: false, ...state });
 			await starting;
 		};
-		return { protocol, receive, reply, events, sent, last, start };
+		return { protocol, receive, reply, events, sent, last, start, settings };
 	}
 
 	test('frames split, empty, and oversized JSONL records', () => {
@@ -43,8 +38,19 @@ suite('Anden agent protocol', () => {
 		assert.throws(() => framer.accept(' '.repeat(16), () => { }), /framing limit/);
 	});
 
+	test('accepts only the exact idle Pi session on resume and does not replay a turn', async () => {
+		const native = { sessionId: '00000000-0000-4000-8000-000000000001', sessionFile: '/example/test.jsonl', cwd: '/example' };
+		const p = create(native);
+		await p.start(native);
+		assert.deepStrictEqual(p.events.find(event => event.kind === 'piSession'), { kind: 'piSession', session: native });
+		assert.deepStrictEqual(p.sent.map(message => message.type), ['get_state']);
+		const other = create(native);
+		await assert.rejects(other.start({ ...native, sessionId: '00000000-0000-4000-8000-000000000002' }), /expected idle session/);
+		assert.ok(!other.events.some(event => event.kind === 'state' && event.state === 'ready'));
+	});
+
 	test('keeps Pi busy until settled, records tool results and reconciles final text', async () => {
-		const p = create('pi');
+		const p = create();
 		await p.start();
 		const sending = p.protocol.send('hello');
 		p.reply({});
@@ -66,7 +72,7 @@ suite('Anden agent protocol', () => {
 	});
 
 	test('Pi confirmation can be declined or cancelled and only answers once', async () => {
-		const p = create('pi');
+		const p = create();
 		await p.start();
 		p.receive({ type: 'extension_ui_request', id: 'a', method: 'confirm', title: 'Proceed?' });
 		p.protocol.answer('string:a', { kind: 'decline' });
@@ -75,33 +81,52 @@ suite('Anden agent protocol', () => {
 		p.protocol.answer('string:a', { kind: 'allow' });
 		assert.strictEqual(p.sent.length, count);
 		p.receive({ type: 'extension_ui_request', id: 'b', method: 'select', title: 'Pick', options: ['yes', 'no'] });
-		assert.throws(() => p.protocol.answer('string:b', { kind: 'answers', values: [{ id: 'value', value: 'not an option' }] }));
+		assert.throws(() => p.protocol.answer('string:b', { kind: 'value', value: 'not an option' }));
 		p.protocol.answer('string:b', { kind: 'cancel' });
 		assert.deepStrictEqual(p.last(), { type: 'extension_ui_response', id: 'b', cancelled: true });
 	});
 
-	test('Codex approval is correlated, bounded, and never grants ongoing permissions', async () => {
-		const c = create('codex');
-		await c.start();
-		const send = c.protocol.send('test');
-		c.reply({ turn: { id: 'turn' } });
-		await send;
-		c.receive({ id: 5, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread', command: 'pwd' } });
-		assert.strictEqual(c.events.at(-1)?.kind, 'request');
-		c.protocol.answer('number:5', { kind: 'allow' });
-		assert.deepStrictEqual(c.last(), { id: 5, result: { decision: 'accept' } });
-		c.receive({ id: 6, method: 'item/permissions/requestApproval', params: { threadId: 'thread', permissions: { network: { enabled: true } } } });
-		c.protocol.answer('number:6', { kind: 'allow' });
-		assert.deepStrictEqual(c.last(), { id: 6, result: { permissions: { network: { enabled: true } }, scope: 'turn' } });
-		c.receive({ id: 7, method: 'item/commandExecution/requestApproval', params: { threadId: 'thread', command: 'x'.repeat(9000) } });
-		assert.deepStrictEqual(c.last(), { id: 7, result: { decision: 'decline' } });
-		c.receive({ id: 8, method: 'item/commandExecution/requestApproval', params: { threadId: 'unrelated', command: 'pwd' } });
-		assert.ok(c.last()?.error);
-		const stopping = c.protocol.stop();
-		assert.deepStrictEqual(c.last()?.params, { threadId: 'thread', turnId: 'turn' });
-		c.reply({});
-		await stopping;
-		c.receive({ method: 'turn/completed', params: { threadId: 'thread', turn: { id: 'turn', status: 'interrupted' } } });
-		assert.strictEqual(c.events.filter(event => event.kind === 'state').at(-1)?.state, 'interrupted');
+	test('Pi reads and changes model and reasoning without starting a turn', async () => {
+		const p = create();
+		const oldModel = { id: 'old', provider: 'test', name: 'Old' };
+		const newModel = { id: 'new', provider: 'test', name: 'New' };
+		await p.start({ model: oldModel, thinkingLevel: 'low' });
+		assert.strictEqual(p.settings()?.model?.id, 'old');
+		const listing = p.protocol.listModels();
+		assert.strictEqual(p.last()?.type, 'get_available_models');
+		p.reply({ models: [oldModel, newModel] });
+		await Promise.resolve();
+		p.reply({ model: oldModel, thinkingLevel: 'low' });
+		assert.deepStrictEqual((await listing).map(model => model.id), ['old', 'new']);
+		const changing = p.protocol.selectModel({ id: 'new', provider: 'test' });
+		assert.strictEqual(p.last()?.type, 'set_model');
+		assert.strictEqual(p.last()?.modelId, 'new');
+		await assert.rejects(p.protocol.send('too early'));
+		p.reply(newModel);
+		await Promise.resolve();
+		p.reply({ model: newModel, thinkingLevel: 'medium' });
+		await changing;
+		assert.strictEqual(p.settings()?.model?.id, 'new');
+		const thinking = p.protocol.selectReasoning('high');
+		assert.strictEqual(p.last()?.type, 'get_available_thinking_levels');
+		p.reply({ levels: ['medium', 'high'] });
+		await Promise.resolve();
+		await Promise.resolve();
+		assert.strictEqual(p.last()?.type, 'set_thinking_level');
+		p.reply({});
+		await Promise.resolve();
+		p.reply({ model: newModel, thinkingLevel: 'high' });
+		await thinking;
+		assert.strictEqual(p.settings()?.reasoning, 'high');
+		assert.ok(!p.sent.some(message => message.type === 'prompt'));
+	});
+
+	test('validates a Pi extension selection before responding', async () => {
+		const p = create();
+		await p.start();
+		p.receive({ type: 'extension_ui_request', id: 'choice', method: 'select', title: 'Choose', options: ['One', 'Two'] });
+		assert.throws(() => p.protocol.answer('string:choice', { kind: 'value', value: 'Three' }), /valid answer/);
+		p.protocol.answer('string:choice', { kind: 'value', value: 'Two' });
+		assert.deepStrictEqual(p.last(), { type: 'extension_ui_response', id: 'choice', value: 'Two' });
 	});
 });

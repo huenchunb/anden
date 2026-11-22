@@ -4,40 +4,28 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event } from '../../../../base/common/event.js';
+import { AndenPiSession } from '../../../../platform/anden/common/andenHistory.js';
 import { IProcessEnvironment } from '../../../../base/common/platform.js';
 
 export const andenAgentChannel = 'andenAgent';
-export type AndenAgentKind = 'pi' | 'codex';
 export type AndenAgentState = 'starting' | 'ready' | 'working' | 'stopping' | 'interrupted' | 'error' | 'disconnected';
 export type AndenActivity = 'model' | 'tools' | 'retry' | 'compaction';
 export type AndenToolKind = 'read' | 'edit' | 'search' | 'command' | 'test' | 'other';
 
 export interface AndenLaunchOptions {
 	readonly sessionId: string;
-	readonly agent: AndenAgentKind;
 	readonly executable: string;
 	readonly cwd: string;
 	readonly env: IProcessEnvironment;
+	readonly piResume?: AndenPiSession;
 }
 
-export interface AndenQuestion {
-	readonly id: string;
-	readonly label: string;
-	readonly value?: string;
-	readonly options?: readonly { readonly label: string; readonly description?: string }[];
-	readonly other?: boolean;
-	readonly secret?: boolean;
-}
+export type AndenRequest = { readonly id: string; readonly title: string } & (
+	{ readonly kind: 'confirm'; readonly detail: string }
+	| { readonly kind: 'input'; readonly options: readonly string[]; readonly value?: string }
+);
 
-export interface AndenRequest {
-	readonly id: string;
-	readonly kind: 'command' | 'files' | 'permissions' | 'confirm' | 'questions';
-	readonly title?: string;
-	readonly detail?: string;
-	readonly questions?: readonly AndenQuestion[];
-}
-
-export type AndenAnswer = { readonly kind: 'allow' | 'decline' | 'cancel' } | { readonly kind: 'answers'; readonly values: readonly { readonly id: string; readonly value: string }[] };
+export type AndenAnswer = { readonly kind: 'allow' | 'decline' | 'cancel' } | { readonly kind: 'value'; readonly value: string };
 
 export interface AndenTool {
 	readonly id: string;
@@ -49,9 +37,30 @@ export interface AndenTool {
 	readonly output?: string;
 }
 
+export interface AndenModelRef {
+	readonly id: string;
+	readonly provider?: string;
+}
+
+export interface AndenModel extends AndenModelRef {
+	readonly label: string;
+}
+
+export interface AndenReasoningOption {
+	readonly id: string;
+}
+
+export interface AndenModelSettings {
+	readonly model?: AndenModel;
+	readonly reasoning?: string;
+}
+
 export type AndenAgentUpdate =
 	| { readonly kind: 'state'; readonly state: AndenAgentState; readonly activity?: AndenActivity; readonly error?: string }
+	| { readonly kind: 'piSession'; readonly session: AndenPiSession }
+	| { readonly kind: 'modelSettings'; readonly settings: AndenModelSettings }
 	| { readonly kind: 'user'; readonly id: string; readonly text: string }
+	| { readonly kind: 'userAccepted'; readonly id: string }
 	| { readonly kind: 'text'; readonly id: string; readonly text: string; readonly append: boolean }
 	| { readonly kind: 'tool'; readonly tool: AndenTool }
 	| { readonly kind: 'request'; readonly request: AndenRequest }
@@ -63,6 +72,10 @@ export interface IAndenAgentProcess {
 	start(options: AndenLaunchOptions): Promise<void>;
 	send(sessionId: string, text: string): Promise<void>;
 	stop(sessionId: string): Promise<void>;
+	listModels(sessionId: string): Promise<readonly AndenModel[]>;
+	selectModel(sessionId: string, model: AndenModelRef): Promise<void>;
+	listReasoning(sessionId: string): Promise<readonly AndenReasoningOption[]>;
+	selectReasoning(sessionId: string, level: string): Promise<void>;
 	answer(sessionId: string, requestId: string, answer: AndenAnswer): Promise<void>;
 	close(sessionId: string): Promise<void>;
 }

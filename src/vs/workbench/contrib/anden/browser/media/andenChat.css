@@ -11,6 +11,23 @@
 	background: var(--vscode-editor-background);
 }
 
+.anden-workbench .anden-history-transcript:not([hidden]) {
+	flex: 1;
+	min-height: 0;
+	position: static;
+}
+
+.anden-history-toolbar, .anden-history-draft {
+	padding: 8px clamp(12px, 4%, 32px);
+	border-bottom: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.anden-history-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.anden-history-toolbar .anden-status { margin-inline-end: auto; }
+.anden-history-draft { border-top: 1px solid var(--vscode-widget-border, transparent); }
+.anden-history-draft h3 { display: inline-block; margin: 0 8px 0 0; }
+.anden-history-draft pre { max-height: min(20vh, 180px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 .anden-transcript {
 	flex: 1;
 	min-height: 0;
@@ -95,7 +112,21 @@
 
 .anden-code-toolbar { padding: 4px 12px; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
 .anden-composer { border-top: 1px solid var(--vscode-widget-border, transparent); padding-block: 8px 14px; }
-.anden-composer-actions, .anden-request-actions { justify-content: flex-end; }
+.anden-composer-actions { justify-content: space-between; }
+.anden-request-actions { justify-content: flex-end; }
+.anden-model-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.anden-workbench button:is(.anden-model-button, .anden-reasoning-button) {
+	border: 0;
+	padding: 4px 6px;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.anden-workbench button:is(.anden-model-button, .anden-reasoning-button):enabled:hover { text-decoration: underline; }
+.anden-command-suggestions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .anden-chat-activity { min-height: 26px; }
 .anden-activity-controls { display: flex; flex-wrap: wrap; gap: 4px; }
 
