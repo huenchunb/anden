@@ -5,7 +5,8 @@
 
 import { localize } from '../../../../nls.js';
 import { AndenPiSession, parsePiSession } from '../../../../platform/anden/common/andenHistory.js';
-import { AndenActivity, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenModel, AndenModelRef, AndenReasoningOption, AndenRequest, AndenTool, AndenToolKind } from './andenAgent.js';
+import { AndenActivity, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenModel, AndenModelRef, AndenPiCommand, AndenReasoningOption, AndenRequest, AndenSessionStats, AndenTool, AndenToolKind } from './andenAgent.js';
+import { isAndenLocalCommand, isPiCommandName, isPiTerminalCommand } from './andenSlashCommands.js';
 
 type Wire = Record<string, unknown>;
 const record = (value: unknown): Wire => value && typeof value === 'object' && !Array.isArray(value) ? value as Wire : {};
@@ -60,6 +61,45 @@ export class AndenAgentProtocol {
 		this.requireIdle();
 		this.changingSettings = true;
 		try { await action(); } finally { this.changingSettings = false; }
+	}
+
+	async listCommands(): Promise<readonly AndenPiCommand[]> {
+		this.requireIdle();
+		const response = record(await this.call('get_commands'));
+		const commands = new Map<string, AndenPiCommand>();
+		for (const item of array(response.commands)) {
+			const { name, description, source, sourceInfo } = record(item);
+			if (commands.size >= 512) { break; }
+			if (typeof name !== 'string' || !isPiCommandName(name) || commands.has(name) || isAndenLocalCommand(name) || isPiTerminalCommand(name) || (source !== 'extension' && source !== 'prompt' && source !== 'skill')) { continue; }
+			const info = record(sourceInfo);
+			const scope = info.scope === 'user' || info.scope === 'project' || info.scope === 'temporary' ? info.scope : undefined;
+			const supported = !(source === 'extension' && info.source === 'builtin' && (name === 'llama' || name === 'mcp'));
+			commands.set(name, { name, description: bounded(text(description), 240).replace(/[\r\n]+/g, ' '), source, scope, supported });
+		}
+		return [...commands.values()];
+	}
+
+	async invokeCommand(name: string, args: string): Promise<void> {
+		const command = (await this.listCommands()).find(command => command.name === name);
+		if (!command) { throw new Error(localize('piSlashNotFound', 'Pi did not report /{0} for this session.', name)); }
+		if (!command.supported) { throw new Error(localize('piSlashTerminalUI', "/{0} needs Pi's terminal interface.", name)); }
+		await this.send(args ? `/${name} ${args}` : `/${name}`);
+	}
+
+	async setSessionName(name: string): Promise<void> {
+		await this.changeSettings(async () => { await this.call('set_session_name', { name }); });
+	}
+
+	async getLastAssistantText(): Promise<string> {
+		this.requireIdle();
+		return text(record(await this.call('get_last_assistant_text')).text);
+	}
+
+	async getSessionStats(): Promise<AndenSessionStats> {
+		this.requireIdle();
+		const stats = record(await this.call('get_session_stats'));
+		const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+		return { tokens: number(record(stats.tokens).total), contextPercent: number(record(stats.contextUsage).percent), cost: number(stats.cost) };
 	}
 
 	async listModels(): Promise<readonly AndenModel[]> {

@@ -8,6 +8,7 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/tes
 import { AndenPiSession } from '../../../../../platform/anden/common/andenHistory.js';
 import { AndenAgentUpdate } from '../../common/andenAgent.js';
 import { AndenAgentProtocol } from '../../common/andenAgentProtocol.js';
+import { parseSlashCommand } from '../../common/andenSlashCommands.js';
 import { AndenJsonLines } from '../../common/andenJsonLines.js';
 
 suite('Anden agent protocol', () => {
@@ -118,6 +119,63 @@ suite('Anden agent protocol', () => {
 		p.reply({ model: newModel, thinkingLevel: 'high' });
 		await thinking;
 		assert.strictEqual(p.settings()?.reasoning, 'high');
+		assert.ok(!p.sent.some(message => message.type === 'prompt'));
+	});
+
+	test('parses slash commands without interpreting absolute paths as commands', () => {
+		assert.deepStrictEqual(parseSlashCommand('/thinking high'), { name: 'thinking', args: 'high' });
+		assert.deepStrictEqual(parseSlashCommand('/skill:example one\ntwo'), { name: 'skill:example', args: 'one\ntwo' });
+		assert.strictEqual(parseSlashCommand('/Users/me/file'), undefined);
+		assert.strictEqual(parseSlashCommand('Explain /model'), undefined);
+	});
+
+	test('discovers and validates Pi commands before dispatching; terminal commands never become prompts', async () => {
+		const p = create();
+		await p.start();
+		const entries = [
+			{ name: 'tree', source: 'extension' },
+			{ name: 'thinking', source: 'prompt' },
+			{ name: 'check', description: 'Check\nthe input', source: 'extension', sourceInfo: { scope: 'project', path: '/not-returned' } },
+			{ name: 'check', source: 'prompt' },
+			{ name: 'mcp', source: 'extension', sourceInfo: { source: 'builtin' } },
+			{ name: 'skill:review', source: 'skill' },
+		];
+		const list = p.protocol.listCommands();
+		assert.strictEqual(p.last()?.type, 'get_commands');
+		p.reply({ commands: entries });
+		assert.deepStrictEqual((await list).map(({ name, description, source, supported }) => [name, description, source, supported]), [
+			['check', 'Check the input', 'extension', true], ['mcp', '', 'extension', false], ['skill:review', '', 'skill', true],
+		]);
+		for (const name of ['tree', 'thinking', 'mcp', 'unknown']) {
+			const rejected = p.protocol.invokeCommand(name, '');
+			p.reply({ commands: entries });
+			await assert.rejects(rejected);
+		}
+		assert.ok(!p.sent.some(message => message.type === 'prompt'));
+		const command = p.protocol.invokeCommand('check', 'one two');
+		p.reply({ commands: entries });
+		await Promise.resolve();
+		await Promise.resolve();
+		assert.deepStrictEqual([p.last()?.type, p.last()?.message], ['prompt', '/check one two']);
+		p.reply({ disposition: 'handled' });
+		await command;
+	});
+
+	test('uses local RPCs for naming, copying and session statistics', async () => {
+		const p = create();
+		await p.start();
+		const rename = p.protocol.setSessionName('My session');
+		assert.deepStrictEqual([p.last()?.type, p.last()?.name], ['set_session_name', 'My session']);
+		p.reply({});
+		await rename;
+		const copying = p.protocol.getLastAssistantText();
+		assert.strictEqual(p.last()?.type, 'get_last_assistant_text');
+		p.reply({ text: 'Last reply' });
+		assert.strictEqual(await copying, 'Last reply');
+		const stats = p.protocol.getSessionStats();
+		assert.strictEqual(p.last()?.type, 'get_session_stats');
+		p.reply({ tokens: { total: 73 }, contextUsage: { percent: 0.5 }, cost: -1, sessionFile: '/not-returned' });
+		assert.deepStrictEqual(await stats, { tokens: 73, contextPercent: 0.5, cost: undefined });
 		assert.ok(!p.sent.some(message => message.type === 'prompt'));
 	});
 

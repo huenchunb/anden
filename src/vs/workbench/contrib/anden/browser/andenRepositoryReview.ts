@@ -7,6 +7,7 @@ import { $, append, clearNode } from '../../../../base/browser/dom.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
+import { joinPath } from '../../../../base/common/resources.js';
 import { Schemas } from '../../../../base/common/network.js';
 import { URI } from '../../../../base/common/uri.js';
 import { DiffEditorWidget } from '../../../../editor/browser/widget/diffEditor/diffEditorWidget.js';
@@ -72,6 +73,7 @@ export class AndenRepositoryReview extends Disposable {
 	private readonly status: HTMLElement;
 	private readonly toolbar: HTMLElement;
 	private readonly refreshButton: HTMLButtonElement;
+	private readonly openButton: HTMLButtonElement;
 	private readonly list: HTMLElement;
 	private readonly preview: HTMLElement;
 	private readonly message: HTMLElement;
@@ -92,6 +94,7 @@ export class AndenRepositoryReview extends Disposable {
 
 	constructor(
 		private readonly container: HTMLElement,
+		openFile: (file: URI) => void,
 		@ICommandService private readonly commands: ICommandService,
 		@IInstantiationService instantiation: IInstantiationService,
 		@IModelService private readonly modelService: IModelService,
@@ -109,7 +112,14 @@ export class AndenRepositoryReview extends Disposable {
 		this.editorInstantiation = this._register(instantiation.createChild(new ServiceCollection([IEditorProgressService, progress])));
 		this.toolbar = append(container, $('div.anden-review-toolbar'));
 		this.title = append(this.toolbar, $('h2', {}, localize('repositoryChanges', 'Repository Changes')));
-		this.refreshButton = append(this.toolbar, andenButton(localize('refresh', 'Refresh'), 'refresh'));
+		const actions = append(this.toolbar, $('div.anden-review-actions'));
+		this.openButton = append(actions, $<HTMLButtonElement>('button', { type: 'button' }, localize('andenOpenInEditor', 'Open in Editor')));
+		this.openButton.hidden = true;
+		this.openButton.onclick = () => {
+			const file = this.workingFile();
+			if (file) { openFile(file); }
+		};
+		this.refreshButton = append(actions, andenButton(localize('refresh', 'Refresh'), 'refresh'));
 		this.refreshButton.onclick = () => void this.loadEntries(true);
 		this.status = append(container, $('div.anden-review-status', { role: 'status' }));
 		const body = append(container, $('div.anden-review-body'));
@@ -323,6 +333,13 @@ export class AndenRepositoryReview extends Disposable {
 		return this.entries.find(entry => keyOf(entry) === this.state?.entry);
 	}
 
+	private workingFile(): URI | undefined {
+		const entry = this.getEntry();
+		if (!entry || !this.root || !this.state || entry.kind === 'deleted' || entry.kind === 'submodule' || entry.kind === 'conflict') { return undefined; }
+		const file = joinPath(this.root, entry.path);
+		return this.uris.extUri.isEqualOrParent(file, this.state.folder) ? file : undefined;
+	}
+
 	private saveViewState(): void {
 		if (this.state && this.state.entry === this.modelKey && this.editor?.getModel()) {
 			this.state.viewState = this.editor.saveViewState();
@@ -330,6 +347,7 @@ export class AndenRepositoryReview extends Disposable {
 	}
 
 	private clearDiff(): void {
+		this.openButton.hidden = true;
 		this.diffRequest?.dispose(true);
 		this.diffRequest = undefined;
 		this.diffRefresh.cancel();
@@ -376,6 +394,10 @@ export class AndenRepositoryReview extends Disposable {
 				this.message.textContent = localize('reviewNotRegularFile', 'Text diffs are only available for regular files inside the repository.');
 				return;
 			}
+			const workingFile = this.workingFile();
+			const stat = workingFile ? await this.files.stat(workingFile).catch(() => undefined) : undefined;
+			if (token.isCancellationRequested) { return; }
+			this.openButton.hidden = !(stat?.isFile && !stat.isSymbolicLink);
 			this.saveViewState();
 			this.message.textContent = '';
 			this.editorHost.hidden = false;

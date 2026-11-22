@@ -10,13 +10,18 @@ import { Disposable, IDisposable, MutableDisposable } from '../../../../base/com
 import { EditorMarkdownCodeBlockRenderer } from '../../../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
 import { localize } from '../../../../nls.js';
 import { AndenHistoryRecord } from '../../../../platform/anden/common/andenHistory.js';
+import { safeIntl } from '../../../../base/common/date.js';
+import { generateUuid } from '../../../../base/common/uuid.js';
+import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMarkdownRendererService } from '../../../../platform/markdown/browser/markdownRenderer.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
-import { AndenActivity, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenModel, AndenModelRef, AndenModelSettings, AndenReasoningOption, AndenRequest, AndenTool } from '../common/andenAgent.js';
+import { AndenActivity, AndenAgentState, AndenAgentUpdate, AndenAnswer, AndenModel, AndenModelRef, AndenModelSettings, AndenPiCommand, AndenReasoningOption, AndenRequest, AndenSessionStats, AndenTool } from '../common/andenAgent.js';
+import { andenSlashCommands, AndenLocalCommand, isAndenLocalCommand, isPiTerminalCommand, parseSlashCommand } from '../common/andenSlashCommands.js';
 import { andenButton, andenIcon, AndenIcon } from './andenIcons.js';
 import './media/andenChat.css';
 
@@ -24,6 +29,15 @@ interface AndenChatActions {
 	onDraftChange(text: string): void;
 	send(text: string): Promise<void>;
 	stop(): Promise<void>;
+	listCommands(): Promise<readonly AndenPiCommand[]>;
+	invokeCommand(name: string, args: string): Promise<void>;
+	newSession(): Promise<void>;
+	browseHistory(): Promise<void>;
+	rename(name: string): Promise<void>;
+	sessionDetails(): { label: string; folder: string };
+	hotkeys(): Promise<void>;
+	getLastAssistantText(): Promise<string>;
+	getSessionStats(): Promise<AndenSessionStats>;
 	listModels(): Promise<readonly AndenModel[]>;
 	selectModel(model: AndenModelRef): Promise<void>;
 	listReasoning(): Promise<readonly AndenReasoningOption[]>;
@@ -32,8 +46,18 @@ interface AndenChatActions {
 	showFile(path: string): boolean;
 }
 
-const sessionCommands = ['/model', '/reasoning', '/settings'] as const;
-type SessionCommand = typeof sessionCommands[number];
+const numberFormatter = safeIntl.NumberFormat();
+const percentFormatter = safeIntl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 });
+const costFormatter = safeIntl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
+
+const commandGroups = {
+	anden: 'Anden',
+	extension: localize('slashExtensions', 'Extensions'),
+	prompt: localize('slashTemplates', 'Templates'),
+	skill: localize('slashSkills', 'Skills'),
+} as const;
+
+type CommandSuggestion = { readonly name: string; readonly description: string; readonly source: keyof typeof commandGroups; readonly supported: boolean; readonly scope?: AndenPiCommand['scope'] };
 
 function reasoningLabel(level: string): string {
 	switch (level) {
@@ -77,7 +101,16 @@ export class AndenChat extends Disposable {
 	private readonly modelButton: HTMLButtonElement;
 	private readonly reasoningButton: HTMLButtonElement;
 	private readonly commandSuggestions: HTMLElement;
-	private readonly commandButtons = new Map<SessionCommand, HTMLButtonElement>();
+	private readonly commandList: HTMLElement;
+	private readonly commandFeedback: HTMLElement;
+	private readonly commandListId = `anden-slash-${generateUuid()}`;
+	private commandButtons: { command: CommandSuggestion; button: HTMLButtonElement }[] = [];
+	private piCommands: readonly AndenPiCommand[] = [];
+	private catalogPending = false;
+	private catalogError = false;
+	private catalogRequested = false;
+	private renderedQuery: string | undefined;
+	private activeSuggestion = -1;
 	private modelSettings: AndenModelSettings = {};
 	private settingsOpen = false;
 	private commandSuggestionsDismissed = false;
@@ -109,6 +142,8 @@ export class AndenChat extends Disposable {
 		@IOpenerService private readonly opener: IOpenerService,
 		@IClipboardService private readonly clipboard: IClipboardService,
 		@IQuickInputService private readonly quickInput: IQuickInputService,
+		@IDialogService private readonly dialogs: IDialogService,
+		@INotificationService private readonly notifications: INotificationService,
 		@IInstantiationService instantiation: IInstantiationService,
 		@IThemeService theme: IThemeService,
 	) {
@@ -130,32 +165,37 @@ export class AndenChat extends Disposable {
 		this.requestButton.onclick = () => this.focus(true);
 		this.stopButton = append(activityControls, andenButton(localize('chatStop', 'Stop'), 'stop'));
 		this.input = append(panel, $<HTMLTextAreaElement>('textarea.anden-chat-input', { rows: '3', maxlength: '65536', placeholder: localize('chatPlaceholder', 'Message Pi…'), 'aria-label': localize('chatMessage', 'Message for Pi') }));
-		this.commandSuggestions = append(panel, $('div.anden-command-suggestions', { role: 'group', 'aria-label': localize('sessionCommands', 'Session commands') }));
-		for (const command of sessionCommands) {
-			const button = append(this.commandSuggestions, $<HTMLButtonElement>('button', { type: 'button' }, command));
-			button.onclick = () => void this.runCommand(command, true);
-			this.commandButtons.set(command, button);
-		}
+		this.commandSuggestions = append(panel, $('div.anden-command-suggestions'));
+		this.commandList = append(this.commandSuggestions, $('div', { id: this.commandListId, role: 'listbox', 'aria-label': localize('sessionCommands', 'Session commands') }));
+		this.commandFeedback = append(this.commandSuggestions, $('div.anden-command-heading', { role: 'status' }));
 		const actionsBar = append(panel, $('div.anden-composer-actions'));
 		const modelActions = append(actionsBar, $('div.anden-model-actions'));
 		this.modelButton = append(modelActions, $<HTMLButtonElement>('button.anden-model-button', { type: 'button', 'aria-haspopup': 'listbox' }));
-		this.modelButton.onclick = () => void this.runCommand('/model');
+		this.modelButton.onclick = () => void this.runCommand('model');
 		this.reasoningButton = append(modelActions, $<HTMLButtonElement>('button.anden-reasoning-button', { type: 'button', 'aria-haspopup': 'listbox' }));
-		this.reasoningButton.onclick = () => void this.runCommand('/reasoning');
+		this.reasoningButton.onclick = () => void this.runCommand('thinking');
 		this.sendButton = append(actionsBar, andenButton(localize('chatSend', 'Send'), 'send'));
 		this.sendButton.classList.add('anden-primary');
 		this.input.oninput = () => { this.commandSuggestionsDismissed = false; this.publishDraft(); this.renderStatus(); };
 		this.input.onkeydown = event => {
-			if (event.key === 'Escape' && !this.commandSuggestions.hidden && !event.isComposing) {
+			if (event.isComposing || event.keyCode === 229) { return; }
+			if (!this.commandSuggestions.hidden && (event.key === 'ArrowDown' || event.key === 'ArrowUp') && this.commandButtons.length) {
+				event.preventDefault();
+				this.moveSuggestion(event.key === 'ArrowDown' ? 1 : -1);
+				return;
+			}
+			if (event.key === 'Escape' && !this.commandSuggestions.hidden) {
 				event.preventDefault();
 				event.stopPropagation();
 				this.commandSuggestionsDismissed = true;
 				this.renderStatus();
 				return;
 			}
-			if (event.key === 'Enter' && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+			if (event.key === 'Enter' && !event.shiftKey) {
 				event.preventDefault();
-				void this.send();
+				const suggestion = this.commandSuggestions.hidden ? undefined : this.commandButtons[this.activeSuggestion];
+				if (suggestion) { this.chooseSuggestion(suggestion.command); }
+				else { void this.send(); }
 			}
 		};
 		this.sendButton.onclick = () => void this.send();
@@ -299,26 +339,56 @@ export class AndenChat extends Disposable {
 		return !!this.actions && !this.busySending && !this.settingsOpen && !this.pending && ['ready', 'interrupted', 'error'].includes(this.state);
 	}
 
-	private async runCommand(command: SessionCommand, fromInput = false): Promise<void> {
-		if (!this.canConfigure) { return; }
+	private async runCommand(command: AndenLocalCommand, fromInput = false, args = ''): Promise<void> {
+		const actions = this.actions;
+		if (!actions || !this.canConfigure) { return; }
+		const draft = fromInput ? this.input.value : '';
 		if (fromInput) { this.setDraft(''); }
 		this.settingsOpen = true;
 		this.renderStatus();
 		try {
-			let choice = command;
-			if (choice === '/settings') {
-				const current = this.modelSettings;
-				const selection = await this.quickInput.pick([
-					{ command: '/model' as const, label: localize('sessionModelOption', 'Model'), description: current.model?.label },
-					{ command: '/reasoning' as const, label: localize('sessionReasoningOption', 'Reasoning'), description: current.reasoning ? reasoningLabel(current.reasoning) : undefined },
-				], { title: localize('chatSessionSettings', 'Session settings'), placeHolder: localize('chooseSessionSetting', 'Choose a setting for this session') });
-				if (!selection || this._store.isDisposed || this.root.hidden) { return; }
-				choice = selection.command;
+			if (args && !['model', 'thinking', 'reasoning', 'name'].includes(command)) {
+				throw new Error(localize('slashNoArguments', '/{0} does not take arguments.', command));
 			}
-			if (choice === '/model') { await this.pickModel(); }
-			else { await this.pickReasoning(); }
-		} catch (error) { this.showError(error); }
-		finally {
+			switch (command) {
+				case 'settings': {
+					const current = this.modelSettings;
+					const selection = await this.quickInput.pick([
+						{ command: 'model', label: localize('sessionModelOption', 'Model'), description: current.model?.label },
+						{ command: 'thinking', label: localize('sessionReasoningOption', 'Reasoning'), description: current.reasoning ? reasoningLabel(current.reasoning) : undefined },
+					], { title: localize('chatSessionSettings', 'Session settings'), placeHolder: localize('chooseSessionSetting', 'Choose a setting for this session') });
+					if (selection && !this._store.isDisposed && !this.root.hidden) {
+						if (selection.command === 'model') { await this.pickModel(); }
+						else { await this.pickReasoning(); }
+					}
+					break;
+				}
+				case 'model': await this.pickModel(args); break;
+				case 'thinking': case 'reasoning':
+					if (args) { await actions.selectReasoning(args); }
+					else { await this.pickReasoning(); }
+					break;
+				case 'new': await actions.newSession(); break;
+				case 'resume': await actions.browseHistory(); break;
+				case 'name': await actions.rename(args); break;
+				case 'copy': {
+					const text = await actions.getLastAssistantText();
+					if (!text) { throw new Error(localize('slashNothingToCopy', 'Pi has not replied in this session yet.')); }
+					if (!this._store.isDisposed) {
+						await this.clipboard.writeText(text);
+						this.notifications.info(localize('slashCopied', 'Copied the last Pi response.'));
+					}
+					break;
+				}
+				case 'session': await this.showSessionDetails(actions); break;
+				case 'hotkeys': await actions.hotkeys(); break;
+			}
+		} catch (error) {
+			if (!this._store.isDisposed) {
+				if (draft && !this.input.value) { this.setDraft(draft); }
+				this.notifications.warn(error instanceof Error ? error.message : localize('slashFailed', 'The command could not be completed.'));
+			}
+		} finally {
 			this.settingsOpen = false;
 			if (!this._store.isDisposed) {
 				this.renderStatus();
@@ -327,12 +397,34 @@ export class AndenChat extends Disposable {
 		}
 	}
 
-	private async pickModel(): Promise<void> {
+	private async showSessionDetails(actions: AndenChatActions): Promise<void> {
+		const stats = await actions.getSessionStats();
+		if (this._store.isDisposed || this.root.hidden) { return; }
+		const { label, folder } = actions.sessionDetails();
+		const model = this.modelSettings.model;
+		const level = this.modelSettings.reasoning;
+		await this.dialogs.info(label, [
+			localize('detailsFolder', 'Folder: {0}', folder),
+			localize('detailsModel', 'Model: {0}', model?.label ?? localize('defaultModel', 'Default model')),
+			level ? localize('detailsReasoning', 'Reasoning: {0}', reasoningLabel(level)) : undefined,
+			stats.tokens === undefined ? undefined : localize('detailsTokens', 'Total tokens: {0}', numberFormatter.value.format(stats.tokens)),
+			stats.contextPercent === undefined ? undefined : localize('detailsContext', 'Context used: {0}', percentFormatter.value.format(stats.contextPercent / 100)),
+			stats.cost === undefined ? undefined : localize('detailsCost', 'Estimated cost: {0}', costFormatter.value.format(stats.cost)),
+		].filter(Boolean).join('\n'));
+	}
+
+	private async pickModel(args = ''): Promise<void> {
 		const actions = this.actions;
 		if (!actions) { return; }
 		const models = await actions.listModels();
 		if (this._store.isDisposed || this.root.hidden) { return; }
 		if (!models.length) { throw new Error(localize('noSessionModels', 'The agent did not report any available models.')); }
+		if (args) {
+			const matches = models.filter(model => `${model.provider}/${model.id}` === args || model.id === args);
+			if (matches.length !== 1) { throw new Error(localize('slashModelNotUnique', 'Choose an available model using /model or /model provider/model.')); }
+			await actions.selectModel({ id: matches[0].id, provider: matches[0].provider });
+			return;
+		}
 		const current = this.modelSettings.model;
 		const selected = (model: AndenModel) => model.id === current?.id && model.provider === current.provider;
 		const options = models.map(model => ({
@@ -358,16 +450,123 @@ export class AndenChat extends Disposable {
 	private async send(): Promise<void> {
 		if (!this.actions || this.sendButton.disabled) { return; }
 		const value = this.input.value;
-		const command = sessionCommands.find(command => command === value.trim());
-		if (command) { await this.runCommand(command, true); return; }
+		const command = parseSlashCommand(value);
+		if (command && isAndenLocalCommand(command.name)) { await this.runCommand(command.name, true, command.args); return; }
+		if (command && isPiTerminalCommand(command.name)) {
+			this.notifications.warn(localize('slashNotSupported', '/{0} is a Pi terminal command and is not available in Anden.', command.name));
+			return;
+		}
+		if (value.trim() === '/') { return; }
 		this.draftInFlight = value;
 		this.input.value = '';
 		this.busySending = true;
 		this.following = true;
 		this.renderStatus();
-		try { await this.actions.send(value); }
-		catch (error) { if (!this.input.value) { this.input.value = value; } this.showError(error); }
+		try {
+			if (command) { await this.actions.invokeCommand(command.name, command.args); }
+			else { await this.actions.send(value); }
+		} catch (error) {
+			if (!this.input.value) { this.input.value = value; }
+			if (command) { this.notifications.warn(error instanceof Error ? error.message : localize('slashFailed', 'The command could not be completed.')); }
+			else { this.showError(error); }
+		}
 		finally { this.draftInFlight = ''; this.publishDraft(); this.busySending = false; this.renderStatus(); }
+	}
+
+	private chooseSuggestion(command: CommandSuggestion): void {
+		if (!this.canConfigure || !command.supported) { return; }
+		if (command.source === 'anden' && isAndenLocalCommand(command.name)) {
+			void this.runCommand(command.name, true);
+		} else {
+			// Insert first so users can supply an argument or review what will be invoked.
+			this.setDraft(`/${command.name} `);
+			this.input.focus();
+		}
+	}
+
+	private moveSuggestion(direction: number): void {
+		const count = this.commandButtons.length;
+		if (!count) { return; }
+		let index = this.activeSuggestion < 0 ? (direction > 0 ? -1 : count) : this.activeSuggestion;
+		for (let attempt = 0; attempt < count; attempt++) {
+			index = (index + direction + count) % count;
+			const { button, command } = this.commandButtons[index];
+			if (!command.supported) { continue; }
+			this.selectSuggestion(index);
+			button.scrollIntoView({ block: 'nearest' });
+			return;
+		}
+	}
+
+	private selectSuggestion(index: number): void {
+		this.commandButtons[this.activeSuggestion]?.button.setAttribute('aria-selected', 'false');
+		this.activeSuggestion = index;
+		const suggestion = this.commandButtons[index];
+		if (suggestion) {
+			suggestion.button.setAttribute('aria-selected', 'true');
+			this.input.setAttribute('aria-activedescendant', suggestion.button.id);
+		} else { this.input.removeAttribute('aria-activedescendant'); }
+	}
+
+	private renderCommandSuggestions(refresh = false): void {
+		const actions = this.actions;
+		const value = this.input.value.trimStart();
+		const query = /^\/[\w.:-]{0,160}$/.test(value) ? value.slice(1).toLowerCase() : undefined;
+		if (query === undefined) { this.catalogRequested = false; }
+		if (!actions || !this.canConfigure || this.commandSuggestionsDismissed || query === undefined) {
+			this.commandSuggestions.hidden = true;
+			this.renderedQuery = undefined;
+			this.input.removeAttribute('aria-controls');
+			this.input.removeAttribute('aria-activedescendant');
+			return;
+		}
+		if (!this.catalogRequested && !this.catalogPending) {
+			this.catalogRequested = this.catalogPending = true;
+			this.catalogError = false;
+			this.piCommands = [];
+			this.renderedQuery = undefined;
+			void actions.listCommands().then(commands => { this.piCommands = commands; }, () => { this.catalogError = true; }).finally(() => {
+				this.catalogPending = false;
+				if (!this._store.isDisposed) { this.renderCommandSuggestions(true); }
+			});
+		}
+		if (!refresh && this.renderedQuery === query) { return; }
+		const previousSelection = refresh && this.renderedQuery === query ? this.commandButtons[this.activeSuggestion]?.command.name : undefined;
+		this.renderedQuery = query;
+		this.commandSuggestions.hidden = false;
+		this.input.setAttribute('aria-controls', this.commandListId);
+		this.activeSuggestion = -1;
+		this.commandButtons = [];
+		clearNode(this.commandList);
+		const catalog: CommandSuggestion[] = [
+			...Object.entries(andenSlashCommands).map(([name, description]): CommandSuggestion => ({ name, description, source: 'anden', supported: true })),
+			...this.piCommands,
+		];
+		const nameMatches = catalog.filter(command => command.name.toLowerCase().includes(query));
+		const commands = nameMatches.length ? nameMatches : catalog.filter(command => command.description.toLowerCase().includes(query));
+		for (const [source, title] of Object.entries(commandGroups)) {
+			const matches = commands.filter(command => command.source === source);
+			if (!matches.length) { continue; }
+			matches.sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)));
+			const group = append(this.commandList, $('div.anden-command-group', { role: 'group', 'aria-label': title }));
+			append(group, $('div.anden-command-heading', { 'aria-hidden': 'true' }, title));
+			for (const command of matches) {
+				const button = append(group, $<HTMLButtonElement>('button.anden-command-option', { type: 'button', role: 'option', id: `${this.commandListId}-${this.commandButtons.length}`, tabindex: '-1', 'aria-selected': 'false' }));
+				button.disabled = !command.supported;
+				append(button, $('span.anden-command-name', {}, `/${command.name}`));
+				const description = command.supported ? command.description : localize('slashTerminalUI', "Requires Pi's terminal interface");
+				const scope = command.scope === 'project' ? localize('slashProject', 'Project') : command.scope === 'user' ? localize('slashUser', 'User') : undefined;
+				append(button, $('span.anden-command-description', {}, [scope, description].filter(Boolean).join(' · ')));
+				button.onmousedown = event => event.preventDefault();
+				button.onclick = () => this.chooseSuggestion(command);
+				this.commandButtons.push({ button, command });
+			}
+		}
+		const feedback = this.catalogPending ? localize('slashLoading', 'Loading Pi commands…') : this.catalogError ? localize('slashCatalogFailed', 'Pi commands could not be loaded.') : !this.commandButtons.length ? localize('slashNoResults', 'No matching commands') : undefined;
+		this.selectSuggestion(this.commandButtons.findIndex(entry => entry.command.name === previousSelection));
+		this.commandList.hidden = !this.commandButtons.length;
+		this.commandFeedback.hidden = !feedback;
+		this.commandFeedback.textContent = feedback ?? '';
 	}
 
 	private renderStatus(): void {
@@ -394,11 +593,8 @@ export class AndenChat extends Disposable {
 		this.reasoningButton.title = reasoning ? localize('changeCurrentReasoning', 'Change reasoning level: {0}', reasoning) : localize('changeReasoning', 'Change reasoning level');
 		this.reasoningButton.setAttribute('aria-label', this.reasoningButton.title);
 		this.modelButton.disabled = this.reasoningButton.disabled = !this.canConfigure;
-		const input = this.input.value.trim();
-		const showSuggestions = this.canConfigure && !this.commandSuggestionsDismissed && input.startsWith('/');
-		for (const [command, button] of this.commandButtons) { button.hidden = !showSuggestions || !command.startsWith(input); }
-		this.commandSuggestions.hidden = ![...this.commandButtons.values()].some(button => !button.hidden);
-		this.sendButton.disabled = !this.canConfigure || !input;
+		this.renderCommandSuggestions();
+		this.sendButton.disabled = !this.canConfigure || !this.input.value.trim();
 	}
 
 	private updateText(id: string, value: string, incremental: boolean): void {

@@ -14,7 +14,7 @@ import { isWindows } from '../../../../base/common/platform.js';
 import { removeDangerousEnvVariables, sanitizeProcessEnvironment } from '../../../../base/common/processes.js';
 import { killTree } from '../../../../base/node/processes.js';
 import { localize } from '../../../../nls.js';
-import { AndenPiSession } from '../../../../platform/anden/common/andenHistory.js';
+import { AndenPiSession, maxHistoryName } from '../../../../platform/anden/common/andenHistory.js';
 import { resolvePiSession } from '../../../../platform/anden/node/andenPiSession.js';
 import { AndenAgentUpdate, AndenAnswer, AndenLaunchOptions, AndenModelRef, IAndenAgentProcess } from '../common/andenAgent.js';
 import { AndenAgentProtocol } from '../common/andenAgentProtocol.js';
@@ -137,6 +137,18 @@ export class AndenAgentProcess extends Disposable implements IAndenAgentProcess 
 		await this.requireSession(sessionId).protocol.send(text);
 	}
 	async stop(sessionId: string): Promise<void> { await this.requireSession(sessionId).protocol.stop(); }
+	async listCommands(sessionId: string) { return this.requireSession(sessionId).protocol.listCommands(); }
+	async invokeCommand(sessionId: string, name: string, args: string): Promise<void> {
+		if (name.length + args.length + 2 > 65536) { throw new Error(localize('invalidPrompt', 'Enter a message between 1 and 65,536 characters.')); }
+		await this.requireSession(sessionId).protocol.invokeCommand(name, args);
+	}
+	async setSessionName(sessionId: string, name: string): Promise<void> {
+		const label = name.trim();
+		if (!label || label.length > maxHistoryName) { throw new Error(localize('invalidPiName', 'Enter a session name between 1 and {0} characters.', maxHistoryName)); }
+		await this.requireSession(sessionId).protocol.setSessionName(label);
+	}
+	async getLastAssistantText(sessionId: string) { return this.requireSession(sessionId).protocol.getLastAssistantText(); }
+	async getSessionStats(sessionId: string) { return this.requireSession(sessionId).protocol.getSessionStats(); }
 	async listModels(sessionId: string) { return this.requireSession(sessionId).protocol.listModels(); }
 	async selectModel(sessionId: string, model: AndenModelRef): Promise<void> { await this.requireSession(sessionId).protocol.selectModel(model); }
 	async listReasoning(sessionId: string) { return this.requireSession(sessionId).protocol.listReasoning(); }

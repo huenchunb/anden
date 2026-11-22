@@ -126,7 +126,43 @@
 }
 
 .anden-workbench button:is(.anden-model-button, .anden-reasoning-button):enabled:hover { text-decoration: underline; }
-.anden-command-suggestions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.anden-command-suggestions {
+	max-height: min(24vh, 190px);
+	overflow: auto;
+	margin: 4px 0 6px;
+	padding: 4px;
+	background: var(--vscode-quickInput-background);
+	color: var(--vscode-quickInput-foreground);
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 4px;
+}
+
+.anden-command-heading {
+	padding: 5px 8px;
+	color: var(--vscode-descriptionForeground);
+	font-weight: 600;
+}
+
+.anden-workbench button.anden-command-option {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	width: 100%;
+	padding: 4px 8px;
+	text-align: start;
+}
+
+.anden-command-name { flex: none; }
+.anden-command-description { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.anden-workbench button.anden-command-option:enabled:hover { background: var(--vscode-list-hoverBackground); }
+.anden-workbench button.anden-command-option[aria-selected='true'] {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.anden-workbench button.anden-command-option:disabled { color: var(--vscode-disabledForeground); cursor: default; }
 .anden-chat-activity { min-height: 26px; }
 .anden-activity-controls { display: flex; flex-wrap: wrap; gap: 4px; }
 

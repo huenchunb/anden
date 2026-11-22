@@ -15,6 +15,7 @@ import { ConfirmResult, IFileDialogService, IDialogService, getFileNamesMessage 
 import { WorkbenchState, IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { isMacintosh } from '../../../../base/common/platform.js';
 import { HotExitConfiguration } from '../../../../platform/files/common/files.js';
+import { IProductService } from '../../../../platform/product/common/productService.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
 import { WorkingCopyBackupTracker } from '../common/workingCopyBackupTracker.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -45,10 +46,17 @@ export class NativeWorkingCopyBackupTracker extends WorkingCopyBackupTracker imp
 		@IWorkingCopyEditorService workingCopyEditorService: IWorkingCopyEditorService,
 		@IEditorService editorService: IEditorService,
 		@IUnattendedRestartService unattendedRestartService: IUnattendedRestartService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super(workingCopyBackupService, workingCopyService, logService, lifecycleService, filesConfigurationService, workingCopyEditorService, editorService);
 
 		this._register(unattendedRestartService.registerParticipant({ check: () => this.getUnattendedRestartBlocker() }));
+	}
+
+	private get canHotExit(): boolean {
+		// Anden does not restore its session editor parts on startup. Require an
+		// explicit save or discard instead of leaving dirty files in a hidden part.
+		return !this.productService.andenSessionWorkbench && this.filesConfigurationService.isHotExitEnabled;
 	}
 
 	private getUnattendedRestartBlocker(): string | undefined {
@@ -57,7 +65,7 @@ export class NativeWorkingCopyBackupTracker extends WorkingCopyBackupTracker imp
 			return undefined;
 		}
 
-		if (!this.filesConfigurationService.isHotExitEnabled) {
+		if (!this.canHotExit) {
 			return 'workingCopy.hotExitDisabled'; // shutdown would ask to save
 		}
 
@@ -187,8 +195,8 @@ export class NativeWorkingCopyBackupTracker extends WorkingCopyBackupTracker imp
 	}
 
 	private async shouldBackupBeforeShutdown(reason: ShutdownReason, modifiedWorkingCopies: readonly IWorkingCopy[]): Promise<readonly IWorkingCopy[]> {
-		if (!this.filesConfigurationService.isHotExitEnabled) {
-			return []; // never backup when hot exit is disabled via settings
+		if (!this.canHotExit) {
+			return []; // do not silently leave modified working copies behind
 		}
 
 		if (this.environmentService.isExtensionDevelopment) {

@@ -36,7 +36,7 @@ import { IEnvironmentService } from '../../../../../platform/environment/common/
 import { TestWorkspace, Workspace } from '../../../../../platform/workspace/test/common/testWorkspace.js';
 import { IProgressService } from '../../../../../platform/progress/common/progress.js';
 import { IWorkingCopyEditorService } from '../../common/workingCopyEditorService.js';
-import { TestContextService, TestMarkerService, TestWorkingCopy } from '../../../../test/common/workbenchTestServices.js';
+import { TestContextService, TestMarkerService, TestProductService, TestWorkingCopy } from '../../../../test/common/workbenchTestServices.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { IWorkingCopyBackup, WorkingCopyCapabilities } from '../../common/workingCopy.js';
 import { Event, Emitter } from '../../../../../base/common/event.js';
@@ -67,7 +67,7 @@ suite('WorkingCopyBackupTracker (native)', function () {
 			@IWorkingCopyEditorService workingCopyEditorService: IWorkingCopyEditorService,
 			@IUnattendedRestartService unattendedRestartService: IUnattendedRestartService,
 		) {
-			super(workingCopyBackupService, filesConfigurationService, workingCopyService, lifecycleService, fileDialogService, dialogService, contextService, nativeHostService, logService, environmentService, progressService, workingCopyEditorService, editorService, unattendedRestartService);
+			super(workingCopyBackupService, filesConfigurationService, workingCopyService, lifecycleService, fileDialogService, dialogService, contextService, nativeHostService, logService, environmentService, progressService, workingCopyEditorService, editorService, unattendedRestartService, { ...TestProductService, andenSessionWorkbench: false });
 		}
 
 		protected override getBackupScheduleDelay(): number {

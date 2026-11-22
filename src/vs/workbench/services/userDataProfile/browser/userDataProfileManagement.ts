@@ -22,6 +22,7 @@ import { CONFIG_NEW_WINDOW_PROFILE } from '../../../common/configuration.js';
 import { IWorkbenchEnvironmentService } from '../../environment/common/environmentService.js';
 import { IExtensionService } from '../../extensions/common/extensions.js';
 import { IHostService } from '../../host/browser/host.js';
+import { IWorkingCopyService } from '../../workingCopy/common/workingCopyService.js';
 import { DidChangeUserDataProfileEvent, IProfileTemplateInfo, IUserDataProfileManagementService, IUserDataProfileService } from '../common/userDataProfile.js';
 
 export class UserDataProfileManagementService extends Disposable implements IUserDataProfileManagementService {
@@ -40,6 +41,7 @@ export class UserDataProfileManagementService extends Disposable implements IUse
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IUriIdentityService private readonly uriIdentityService: IUriIdentityService,
 		@ILogService private readonly logService: ILogService,
+		@IWorkingCopyService private readonly workingCopies: IWorkingCopyService,
 	) {
 		super();
 		this._register(userDataProfileService.onDidChangeCurrentProfile(e => this.onDidChangeCurrentProfile(e)));
@@ -188,6 +190,15 @@ export class UserDataProfileManagementService extends Disposable implements IUse
 					throw new CancellationError();
 				}
 			}
+		}
+
+		// Anden disposes the previous profile's session editors when the profile changes.
+		// Do not move their unsaved files into the hidden main editor part.
+		if (this.productService.andenSessionWorkbench && this.userDataProfileService.currentProfile.id !== profile.id && this.workingCopies.hasDirty) {
+			await this.userDataProfilesService.setProfileForWorkspace(toWorkspaceIdentifier(this.workspaceContextService.getWorkspace()), this.userDataProfileService.currentProfile);
+			if (shouldRestartExtensionHosts && !isRemoteWindow) { await this.extensionService.startExtensionHosts(); }
+			await this.dialogService.info(localize('andenProfileUnsaved', 'Save or close the unsaved files before changing profiles.'));
+			throw new CancellationError();
 		}
 
 		// In a remote window update current profile before reloading so that data is preserved from current profile if asked to preserve

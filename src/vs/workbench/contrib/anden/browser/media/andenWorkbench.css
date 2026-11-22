@@ -102,7 +102,7 @@
 	-webkit-app-region: drag;
 }
 
-.anden-integrated-titlebar :is(.anden-sidebar-header button, .anden-changes-button) {
+.anden-integrated-titlebar :is(.anden-sidebar-header button, .anden-session-header-actions button) {
 	-webkit-app-region: no-drag;
 }
 
@@ -113,7 +113,7 @@
 	margin: 0;
 }
 
-.anden-workbench button:not(:where(.anden-review-editor button)) {
+.anden-workbench button:not(:where(.anden-review-editor button, .anden-native-editor button)) {
 	appearance: none;
 	border: 1px solid transparent;
 	border-radius: 4px;
@@ -123,7 +123,7 @@
 	cursor: pointer;
 }
 
-.anden-workbench button:not(:where(.anden-review-editor button)):focus-visible {
+.anden-workbench button:not(:where(.anden-review-editor button, .anden-native-editor button)):focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
 	outline-offset: -1px;
 }
@@ -223,10 +223,82 @@
 	min-height: 0;
 }
 
-.anden-workbench .anden-session-content {
+.anden-workbench .anden-session-split {
 	position: relative;
 	flex: 1;
 	min-height: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.anden-workbench .anden-session-split.anden-tools-open {
+	grid-template-columns: minmax(0, 1fr) 6px minmax(0, var(--anden-tool-width));
+}
+
+.anden-workbench :is(.anden-session-content, .anden-session-tools, .anden-file-pane) {
+	position: relative;
+	min-width: 0;
+	min-height: 0;
+}
+
+.anden-session-divider {
+	z-index: 1;
+	cursor: col-resize;
+	touch-action: none;
+	background: var(--vscode-widget-border, transparent);
+}
+
+.anden-session-divider:is(:hover, :focus-visible) { background: var(--vscode-focusBorder); }
+
+.anden-workbench .anden-file-surfaces,
+.anden-workbench .anden-session-files:not([hidden]) {
+	position: absolute;
+	inset: 0;
+}
+
+.anden-workbench .anden-session-files:not([hidden]) {
+	display: grid;
+	grid-template-columns: minmax(112px, 25%) minmax(0, 1fr);
+}
+
+.anden-workbench .anden-explorer {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	background: var(--vscode-sideBar-background);
+	color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+	border-inline-end: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.anden-explorer-toolbar,
+.anden-review-actions,
+.anden-session-header-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.anden-explorer-toolbar { padding: 4px 6px; }
+.anden-explorer-toolbar h2 { flex: 1; }
+.anden-explorer-toolbar button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.anden-explorer-root { padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anden-explorer-status:not(:empty) { padding: 4px 6px; }
+.anden-file-tree { flex: 1; min-height: 0; }
+.anden-file-tree .monaco-list-row .monaco-icon-label { height: 22px; line-height: 22px; }
+
+.anden-workbench .anden-file-pane { background: var(--vscode-editor-background); }
+.anden-file-empty:not([hidden]) { display: grid; height: 100%; padding: 12px; box-sizing: border-box; place-content: center; text-align: center; }
+.anden-workbench .anden-native-editor { position: absolute; inset: 0; overflow: hidden; }
+.anden-workbench .anden-native-editor[hidden] { display: none; }
+
+@media (max-width: 920px) {
+	.anden-workbench .anden-session-split.anden-tools-open {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr) minmax(0, 55%);
+	}
+	.anden-workbench .anden-session-divider { display: none; }
+	.anden-workbench .anden-session-tools { border-top: 1px solid var(--vscode-widget-border, transparent); }
 }
 
 .anden-workbench .anden-empty {
@@ -245,7 +317,7 @@
 	min-width: 0;
 }
 
-.anden-workbench :is(button.anden-changes-button, .anden-review-toolbar button) {
+.anden-workbench :is(button.anden-files-button, button.anden-changes-button, .anden-review-toolbar button) {
 	flex-shrink: 0;
 	padding: 4px 8px;
 	border-color: var(--vscode-widget-border, transparent);
@@ -257,6 +329,11 @@
 	align-items: center;
 	gap: 6px;
 	font-variant-numeric: tabular-nums;
+}
+
+.anden-session-header-actions button[aria-pressed='true'] {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
 }
 
 .anden-workbench .anden-lines-added {

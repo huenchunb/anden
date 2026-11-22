@@ -55,6 +55,20 @@ export interface AndenModelSettings {
 	readonly reasoning?: string;
 }
 
+export interface AndenPiCommand {
+	readonly name: string;
+	readonly description: string;
+	readonly source: 'extension' | 'prompt' | 'skill';
+	readonly scope?: 'user' | 'project' | 'temporary';
+	readonly supported: boolean;
+}
+
+export interface AndenSessionStats {
+	readonly tokens?: number;
+	readonly contextPercent?: number;
+	readonly cost?: number;
+}
+
 export type AndenAgentUpdate =
 	| { readonly kind: 'state'; readonly state: AndenAgentState; readonly activity?: AndenActivity; readonly error?: string }
 	| { readonly kind: 'piSession'; readonly session: AndenPiSession }
@@ -72,6 +86,11 @@ export interface IAndenAgentProcess {
 	start(options: AndenLaunchOptions): Promise<void>;
 	send(sessionId: string, text: string): Promise<void>;
 	stop(sessionId: string): Promise<void>;
+	listCommands(sessionId: string): Promise<readonly AndenPiCommand[]>;
+	invokeCommand(sessionId: string, name: string, args: string): Promise<void>;
+	setSessionName(sessionId: string, name: string): Promise<void>;
+	getLastAssistantText(sessionId: string): Promise<string>;
+	getSessionStats(sessionId: string): Promise<AndenSessionStats>;
 	listModels(sessionId: string): Promise<readonly AndenModel[]>;
 	selectModel(sessionId: string, model: AndenModelRef): Promise<void>;
 	listReasoning(sessionId: string): Promise<readonly AndenReasoningOption[]>;

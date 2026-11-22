@@ -14,7 +14,7 @@ import { Disposable, DisposableStore, toDisposable } from '../../../../base/comm
 import { Schemas } from '../../../../base/common/network.js';
 import { getCaseInsensitive } from '../../../../base/common/objects.js';
 import { isAbsolute, delimiter, join } from '../../../../base/common/path.js';
-import { IProcessEnvironment, isWindows } from '../../../../base/common/platform.js';
+import { IProcessEnvironment, isMacintosh, isWindows } from '../../../../base/common/platform.js';
 import { basename } from '../../../../base/common/resources.js';
 import { URI } from '../../../../base/common/uri.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
@@ -30,6 +30,7 @@ import { IFileService } from '../../../../platform/files/common/files.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { ISharedProcessService } from '../../../../platform/ipc/electron-browser/services.js';
 import { INativeHostService } from '../../../../platform/native/common/native.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { KeybindingWeight, KeybindingsRegistry } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../platform/quickinput/common/quickInput.js';
@@ -50,6 +51,7 @@ import { SessionList } from '../common/sessionList.js';
 import { suggestSessionName } from '../common/sessionName.js';
 import { AndenRepositoryContext, IAndenRepositorySummary } from '../browser/andenRepositoryContext.js';
 import { AndenRepositoryReview, IAndenReviewState } from '../browser/andenRepositoryReview.js';
+import { AndenSessionFiles } from '../browser/andenSessionFiles.js';
 import { loadAndenCodeFont } from '../browser/andenTypography.js';
 import '../browser/media/andenWorkbench.css';
 
@@ -74,6 +76,7 @@ if (product.andenSessionWorkbench) {
 			'chat.disableAIFeatures': true,
 			'onboarding.enabled': false,
 			'workbench.startupEditor': 'none',
+			'files.hotExit': 'off', // Session editor tabs are not yet restored on restart.
 			'window.title': 'Anden',
 		},
 	}]);
@@ -100,6 +103,8 @@ interface Session {
 	readonly disposables: DisposableStore;
 	readonly review: IAndenReviewState;
 	showReview: boolean;
+	showFiles: boolean;
+	files?: AndenSessionFiles;
 	repository?: IAndenRepositorySummary;
 }
 
@@ -119,6 +124,12 @@ export class AndenWorkbench extends Disposable {
 	private readonly newButton: HTMLButtonElement;
 	private readonly review: AndenRepositoryReview;
 	private readonly changesButton: HTMLButtonElement;
+	private readonly filesButton: HTMLButtonElement;
+	private readonly split: HTMLElement;
+	private readonly tools: HTMLElement;
+	private readonly fileSurfaces: HTMLElement;
+	private readonly divider: HTMLElement;
+	private toolWidth = 55;
 	private readonly historyList: HTMLElement;
 	private readonly historySurface: HTMLElement;
 	private readonly historyView = this._register(new DisposableStore());
@@ -145,6 +156,7 @@ export class AndenWorkbench extends Disposable {
 		@IShellEnvironmentService private readonly shellEnvironment: IShellEnvironmentService,
 		@IDialogService private readonly confirm: IDialogService,
 		@IQuickInputService private readonly quickInput: IQuickInputService,
+		@IKeybindingService private readonly keybindings: IKeybindingService,
 		@IContextMenuService private readonly contextMenu: IContextMenuService,
 		@IFileDialogService private readonly dialogs: IFileDialogService,
 		@IFileService private readonly files: IFileService,
@@ -219,14 +231,32 @@ export class AndenWorkbench extends Disposable {
 		this.folderLabel = append(description, $('div.anden-folder'));
 		this.branchLabel = append(description, $('div.anden-branch'));
 		this.branchLabel.hidden = true;
-		this.changesButton = append(this.header, $<HTMLButtonElement>('button.anden-changes-button', { type: 'button' }));
+		const headerActions = append(this.header, $('div.anden-session-header-actions'));
+		this.filesButton = append(headerActions, $<HTMLButtonElement>('button.anden-files-button', { type: 'button', 'aria-controls': 'anden-session-tools' }, localize('andenFiles', 'Files')));
+		this.filesButton.onclick = () => this.toggleFiles();
+		this.changesButton = append(headerActions, $<HTMLButtonElement>('button.anden-changes-button', { type: 'button', 'aria-controls': 'anden-session-tools' }));
 		this.changesButton.onclick = () => this.toggleReview();
-		this.content = append(main, $('div.anden-session-content'));
+		this.split = append(main, $('div.anden-session-split'));
+		this.content = append(this.split, $('div.anden-session-content'));
 		this.historySurface = append(this.content, $('div.anden-chat.anden-history-surface', { tabindex: '-1' }));
 		this.historySurface.hidden = true;
-		const reviewContainer = append(this.content, $('div.anden-review'));
+		this.divider = append(this.split, $('div.anden-session-divider', { role: 'separator', tabindex: '0', 'aria-orientation': 'vertical', 'aria-controls': 'anden-session-tools', 'aria-label': localize('andenResizeFiles', 'Resize the files and changes panel'), 'aria-valuemin': '35', 'aria-valuemax': '72' }));
+		this.tools = append(this.split, $('aside#anden-session-tools.anden-session-tools', { 'aria-label': localize('andenFilePanel', 'Files and changes') }));
+		this.fileSurfaces = append(this.tools, $('div.anden-file-surfaces'));
+		const reviewContainer = append(this.tools, $('div.anden-review'));
 		reviewContainer.hidden = true;
-		this.review = this._register(instantiation.createInstance(AndenRepositoryReview, reviewContainer));
+		this.review = this._register(instantiation.createInstance(AndenRepositoryReview, reviewContainer, (file: URI) => void this.openReviewFile(file)));
+		this.configureDivider();
+		// The global editor service uses the last focused part. A chat can be focused
+		// while a different session's editor was the last to have keyboard focus.
+		this._register(addDisposableListener(root, 'keydown', (event: KeyboardEvent) => {
+			if (event.code === 'KeyS' && !event.isComposing && !event.shiftKey && !event.altKey && (isMacintosh ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) {
+				event.preventDefault();
+				event.stopPropagation();
+				const session = this.selected;
+				if (session?.showFiles && !session.showReview && !session.closing) { session.files?.save(); }
+			}
+		}, true));
 		this.empty = append(this.content, $('div.anden-empty'));
 		append(this.empty, andenIcon('chat'));
 		append(this.empty, $('h2', {}, localize('noSession', "No open session")));
@@ -255,8 +285,6 @@ export class AndenWorkbench extends Disposable {
 		if (this.savedSelection) {
 			if (this.historyChat) { this.historyChat.focus(); }
 			else { this.historySurface.focus(); }
-		} else if (this.selected?.showReview) {
-			this.review.focus();
 		} else if (this.selected) {
 			this.selected.chat.focus();
 		} else {
@@ -414,6 +442,15 @@ export class AndenWorkbench extends Disposable {
 			onDraftChange: text => { if (history.setDraft(text)) { this.markHistoryDirty(session); } },
 			send: text => this.agentClient.send(id, text),
 			stop: () => this.agentClient.stop(id),
+			listCommands: () => this.agentClient.listCommands(id),
+			invokeCommand: (name, args) => this.agentClient.invokeCommand(id, name, args),
+			newSession: () => this.newSession(),
+			browseHistory: () => this.pickSession(true),
+			rename: name => this.renameSession(session, name, true),
+			sessionDetails: () => ({ label: session.label, folder: session.folder.fsPath }),
+			hotkeys: () => this.showHotkeys(),
+			getLastAssistantText: () => this.agentClient.getLastAssistantText(id),
+			getSessionStats: () => this.agentClient.getSessionStats(id),
 			listModels: () => this.agentClient.listModels(id),
 			selectModel: model => this.agentClient.selectModel(id, model),
 			listReasoning: () => this.agentClient.listReasoning(id),
@@ -430,7 +467,7 @@ export class AndenWorkbench extends Disposable {
 		}));
 		const session: Session = {
 			id, chat, history, profileId, restoring: !!restored, row, status, label, folder, surface, selectButton, nameLabel, branchLabel, menuButton, closeButton, disposables,
-			review: { folder, sessionId: id, whenWatching: observation.whenWatching }, showReview: false,
+			review: { folder, sessionId: id, whenWatching: observation.whenWatching }, showReview: false, showFiles: false,
 		};
 		this.sessionById.set(id, session);
 		this.sessions.add(session);
@@ -473,12 +510,20 @@ export class AndenWorkbench extends Disposable {
 
 	private async closeSession(session: Session): Promise<void> {
 		if (session.closing || session.restoring) { return; }
-		if (session.chat.active) {
-			const answer = await this.confirm.confirm({ message: localize('closeActiveChat', 'Close {0} and stop its agent?', session.label), primaryButton: localize('confirmCloseChat', 'Close Session') });
-			if (!answer.confirmed) { return; }
-		}
-		if (!this.sessionById.has(session.id) || session.closing) { return; }
 		session.closing = true;
+		session.closeButton.disabled = true;
+		let confirmed = false;
+		try {
+			if (session.chat.active) {
+				const answer = await this.confirm.confirm({ message: localize('closeActiveChat', 'Close {0} and stop its agent?', session.label), primaryButton: localize('confirmCloseChat', 'Close Session') });
+				if (!answer.confirmed) { return; }
+			}
+			if (session.files && !await session.files.closeEditors()) { return; }
+			confirmed = this.sessionById.get(session.id) === session;
+		} finally {
+			if (!confirmed) { session.closing = false; session.closeButton.disabled = false; }
+		}
+		if (!confirmed) { return; }
 		session.chat.update({ kind: 'state', state: 'disconnected' });
 		this.renderSessionStatus(session);
 		try {
@@ -490,16 +535,23 @@ export class AndenWorkbench extends Disposable {
 				await this.refreshHistory();
 			} else {
 				session.closing = false;
+				session.closeButton.disabled = false;
+				session.files?.cancelClose();
 				this.renderSessionStatus(session);
 			}
 		}
 	}
 
-	private async renameSession(session: Session): Promise<void> {
-		const label = await this.inputSessionName(session.label, true);
-		if (!label || label === session.label || session.disposables.isDisposed) {
-			return;
+	private async renameSession(session: Session, name = '', syncPi = false): Promise<void> {
+		const label = name.trim() || await this.inputSessionName(session.label, true);
+		if (!label || session.disposables.isDisposed) { return; }
+		if (label.length > maxHistoryName || /[\r\n]/.test(label)) {
+			throw new Error(localize('invalidSlashName', 'Enter a single-line session name of at most {0} characters.', maxHistoryName));
 		}
+		if (syncPi) {
+			await this.agentClient.setSessionName(session.id, label);
+			if (session.disposables.isDisposed) { return; }
+		} else if (label === session.label) { return; }
 		session.label = label;
 		this.markHistoryDirty(session);
 		this.renderSessionDetails(session);
@@ -558,14 +610,72 @@ export class AndenWorkbench extends Disposable {
 	private renderSelection(): void {
 		for (const session of this.sessions.values()) {
 			const active = session === this.selected;
-			session.surface.hidden = !active || session.showReview;
+			session.surface.hidden = !active;
+			session.files?.show(active && session.showFiles && !session.showReview);
 			session.selectButton.setAttribute('aria-current', String(active));
 		}
 		this.historySurface.hidden = !this.savedSelection;
 		this.empty.hidden = !!this.selected || !!this.savedSelection;
 		this.header.hidden = !this.selected && !this.savedSelection;
 		this.renderHeader();
-		this.review.show(this.selected?.showReview ? this.selected.review : undefined);
+		const session = this.selected;
+		const panelOpen = !!session && (session.showFiles || session.showReview);
+		this.split.classList.toggle('anden-tools-open', panelOpen);
+		this.tools.hidden = this.divider.hidden = !panelOpen;
+		this.fileSurfaces.hidden = !session?.showFiles || session.showReview;
+		this.filesButton.hidden = !session;
+		this.filesButton.setAttribute('aria-pressed', String(!!session?.showFiles && !session.showReview));
+		this.changesButton.setAttribute('aria-pressed', String(!!session?.showReview));
+		this.review.show(session?.showReview ? session.review : undefined);
+	}
+
+	private configureDivider(): void {
+		const update = (width: number) => {
+			this.toolWidth = Math.round(Math.max(35, Math.min(72, width)));
+			this.split.style.setProperty('--anden-tool-width', `${this.toolWidth}%`);
+			this.divider.setAttribute('aria-valuenow', String(this.toolWidth));
+		};
+		update(this.toolWidth);
+		this.divider.onkeydown = event => {
+			if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') {
+				event.preventDefault();
+				update(event.key === 'Home' ? 35 : event.key === 'End' ? 72 : this.toolWidth + (event.key === 'ArrowLeft' ? 3 : -3));
+			}
+		};
+		this.divider.onpointerdown = event => {
+			if (event.button === 0) { this.divider.setPointerCapture(event.pointerId); }
+		};
+		this.divider.onpointermove = event => {
+			if (this.divider.hasPointerCapture(event.pointerId)) {
+				const bounds = this.split.getBoundingClientRect();
+				if (bounds.width) { update((bounds.right - event.clientX) * 100 / bounds.width); }
+			}
+		};
+	}
+
+	private showFiles(session: Session): AndenSessionFiles {
+		if (!session.files) {
+			const surface = append(this.fileSurfaces, $('div.anden-session-files', { hidden: true }));
+			session.files = session.disposables.add(this.instantiation.createInstance(AndenSessionFiles, surface, session.folder));
+		}
+		session.showFiles = true;
+		session.showReview = false;
+		this.renderSelection();
+		return session.files;
+	}
+
+	private toggleFiles(): void {
+		const session = this.selected;
+		if (!session || session.closing) { return; }
+		if (session.showFiles && !session.showReview) {
+			session.showFiles = false;
+			this.renderSelection();
+		} else { this.showFiles(session).focus(); }
+	}
+
+	private async openReviewFile(file: URI): Promise<void> {
+		const session = this.selected;
+		if (session && !session.closing && session.showReview) { await this.showFiles(session).open(file); }
 	}
 
 	private toggleReview(): void {
@@ -575,7 +685,7 @@ export class AndenWorkbench extends Disposable {
 		const session = this.selected;
 		session.showReview = !session.showReview;
 		this.renderSelection();
-		if (session.showReview) { this.review.focus(); } else { session.chat.focus(session.chat.pending); }
+		if (session.showReview) { this.review.focus(); } else { this.changesButton.focus(); }
 	}
 
 	private renderHeader(): void {
@@ -589,8 +699,8 @@ export class AndenWorkbench extends Disposable {
 		this.renderBranch(this.branchLabel, session?.repository);
 		const button = this.changesButton;
 		clearNode(button);
-		const label = session?.showReview ? localize('backToChat', 'Back to Chat') : localize('changes', 'Changes');
-		append(button, andenIcon(session?.showReview ? 'back' : 'git'));
+		const label = localize('changes', 'Changes');
+		append(button, andenIcon('git'));
 		append(button, $('span', {}, label));
 		if (session?.showReview && session.chat.pending) {
 			append(button, andenIcon('status-waiting'));
@@ -842,13 +952,32 @@ export class AndenWorkbench extends Disposable {
 		}
 	}
 
-	private async pickSession(): Promise<void> {
+	private showHotkeys(): Promise<void> {
+		const switchKey = this.keybindings.lookupKeybinding(switchSessionCommand)?.getLabel();
+		return this.confirm.info(localize('andenHotkeys', 'Anden keyboard shortcuts'), [
+			localize('andenHotkeySend', 'Enter — Send a message or run a command'),
+			localize('andenHotkeyNewline', 'Shift+Enter — Insert a new line'),
+			localize('andenHotkeySelectCommand', 'Up/Down — Select a command suggestion'),
+			localize('andenHotkeyDismissCommands', 'Escape — Dismiss command suggestions'),
+			switchKey ? localize('andenHotkeySwitch', '{0} — Switch sessions', switchKey) : undefined,
+		].filter(Boolean).join('\n'));
+	}
+
+	private async pickSession(savedOnly = false): Promise<void> {
 		const profileId = this.profiles.currentProfile.id;
-		const sessions: (IQuickPickItem & ({ kind: 'live'; session: Session } | { kind: 'saved'; history: AndenHistorySummary }))[] = [...this.sessions.values()].map(session => ({ kind: 'live', label: session.label, description: session.folder.fsPath, detail: session.repository?.branch, session }));
+		if (savedOnly) {
+			await this.refreshHistory();
+			if (this._store.isDisposed || this.shuttingDown || profileId !== this.profiles.currentProfile.id) { return; }
+			if (!this.historyEntries.size) {
+				this.notifications.info(localize('noSavedSessions', 'There are no saved Pi sessions to browse.'));
+				return;
+			}
+		}
+		const sessions: (IQuickPickItem & ({ kind: 'live'; session: Session } | { kind: 'saved'; history: AndenHistorySummary }))[] = savedOnly ? [] : [...this.sessions.values()].map(session => ({ kind: 'live', label: session.label, description: session.folder.fsPath, detail: session.repository?.branch, session }));
 		for (const history of this.historyEntries.values()) {
 			sessions.push({ kind: 'saved', label: history.label, description: localize('savedPickerSession', 'Saved · {0}', history.folder), history });
 		}
-		const picked = sessions.length === 1 ? sessions[0] : sessions.length ? await this.quickInput.pick(sessions, { placeHolder: localize('pickSession', "Select a session"), matchOnDescription: true }) : undefined;
+		const picked = sessions.length === 1 ? sessions[0] : sessions.length ? await this.quickInput.pick(sessions, { placeHolder: savedOnly ? localize('pickSavedSession', 'Select a saved Pi session') : localize('pickSession', "Select a session"), matchOnDescription: true }) : undefined;
 		if (picked && profileId === this.profiles.currentProfile.id) {
 			if (picked.kind === 'live') { this.selectSession(picked.session); }
 			else { await this.openHistory(picked.history); this.historyChat?.focus(); }

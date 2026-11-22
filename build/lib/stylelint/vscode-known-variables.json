@@ -1140,6 +1140,7 @@
 		"--anden-icon-ink",
 		"--anden-icon-pi",
 		"--anden-icon-repository",
+		"--anden-tool-width",
 		"--anden-window-controls-space",
 		"--notebook-cell-input-preview-font-family",
 		"--notebook-cell-input-preview-font-size",

@@ -64,6 +64,11 @@ export class AndenAgentClient extends Disposable {
 
 	async send(id: string, text: string): Promise<void> { await (await this.requireConnection(id)).send(id, text); }
 	async stop(id: string): Promise<void> { await (await this.requireConnection(id)).stop(id); }
+	async listCommands(id: string) { return (await this.requireConnection(id)).listCommands(id); }
+	async invokeCommand(id: string, name: string, args: string) { await (await this.requireConnection(id)).invokeCommand(id, name, args); }
+	async setSessionName(id: string, name: string) { await (await this.requireConnection(id)).setSessionName(id, name); }
+	async getLastAssistantText(id: string) { return (await this.requireConnection(id)).getLastAssistantText(id); }
+	async getSessionStats(id: string) { return (await this.requireConnection(id)).getSessionStats(id); }
 	async listModels(id: string) { return (await this.requireConnection(id)).listModels(id); }
 	async selectModel(id: string, model: AndenModelRef): Promise<void> { await (await this.requireConnection(id)).selectModel(id, model); }
 	async listReasoning(id: string) { return (await this.requireConnection(id)).listReasoning(id); }
