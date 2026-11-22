@@ -25,6 +25,7 @@ import { IWorkspaceTrustManagementService } from '../../../../platform/workspace
 import { ITextFileService, TextFileOperationError, TextFileOperationResult } from '../../../services/textfile/common/textfiles.js';
 import { ISCMService } from '../../scm/common/scm.js';
 import { andenCodeFont, loadAndenCodeFont } from './andenTypography.js';
+import { andenButton, andenIcon } from './andenIcons.js';
 
 const groups = {
 	conflicts: localize('conflicts', 'Conflicts'),
@@ -58,6 +59,7 @@ export interface IAndenReviewState {
 	readonly sessionId: string;
 	readonly whenWatching: Promise<unknown>;
 	entry?: string;
+	requestedFile?: URI;
 	viewState?: IDiffEditorViewState;
 }
 
@@ -107,7 +109,7 @@ export class AndenRepositoryReview extends Disposable {
 		this.editorInstantiation = this._register(instantiation.createChild(new ServiceCollection([IEditorProgressService, progress])));
 		this.toolbar = append(container, $('div.anden-review-toolbar'));
 		this.title = append(this.toolbar, $('h2', {}, localize('repositoryChanges', 'Repository Changes')));
-		this.refreshButton = append(this.toolbar, $<HTMLButtonElement>('button', { type: 'button' }, localize('refresh', 'Refresh')));
+		this.refreshButton = append(this.toolbar, andenButton(localize('refresh', 'Refresh'), 'refresh'));
 		this.refreshButton.onclick = () => void this.loadEntries(true);
 		this.status = append(container, $('div.anden-review-status', { role: 'status' }));
 		const body = append(container, $('div.anden-review-body'));
@@ -231,8 +233,21 @@ export class AndenRepositoryReview extends Disposable {
 			this.title.title = this.root.fsPath;
 			this.title.textContent = localize('repositoryChangesCount', 'Repository Changes · {0}', count);
 			this.setStatus(count ? this.root.fsPath : localize('reviewClean', 'No changes in {0}', this.root.fsPath));
-			const changed = JSON.stringify(entries) !== JSON.stringify(this.entries);
+			let changed = JSON.stringify(entries) !== JSON.stringify(this.entries);
 			this.entries = entries;
+			const requestedFile = state.requestedFile;
+			state.requestedFile = undefined;
+			if (requestedFile) {
+				const requested = this.uris.extUri.isEqualOrParent(requestedFile, this.root) && entries.find(entry => this.uris.extUri.isEqual(requestedFile, URI.joinPath(this.root!, entry.path)));
+				if (requested) {
+					this.clearDiff();
+					state.entry = keyOf(requested);
+					state.viewState = undefined;
+					changed = true;
+				} else {
+					this.setStatus(localize('toolFileNotChanged', 'The requested file has no reviewable change in this repository.'));
+				}
+			}
 			if (!this.getEntry()) {
 				this.clearDiff();
 				state.entry = entries.length ? keyOf(entries[0]) : undefined;
@@ -277,7 +292,7 @@ export class AndenRepositoryReview extends Disposable {
 				const key = keyOf(entry);
 				const path = entry.previousPath ? `${entry.previousPath} → ${entry.path}` : entry.path;
 				const button = append(append(list, $('li')), $<HTMLButtonElement>('button', { type: 'button', title: path, 'aria-current': String(this.state?.entry === key) },
-					$('span.anden-review-path', {}, path), $('span.anden-review-kind', {}, kinds[entry.kind])));
+					$('span.anden-review-path', {}, path), $('span.anden-review-kind', {}, andenIcon(entry.kind === 'submodule' ? 'git' : entry.kind), $('span', {}, kinds[entry.kind]))));
 				button.dataset.reviewKey = key;
 				if (this.state?.entry === key) {
 					this.selectedButton = button;

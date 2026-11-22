@@ -231,7 +231,7 @@ import './contrib/keybindings/electron-browser/systemWideKeybindings.contributio
 
 import product from '../platform/product/common/product.js';
 import { INativeWindowConfiguration } from '../platform/window/common/window.js';
-import { AndenWorkbench } from './contrib/anden/browser/andenWorkbench.js';
+import { AndenWorkbench } from './contrib/anden/electron-browser/andenWorkbench.js';
 import { main as openDesktopWorkbench } from './electron-browser/desktop.main.js';
 
 export function main(configuration: INativeWindowConfiguration): Promise<void> {

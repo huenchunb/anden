@@ -108,6 +108,7 @@ const desktopEntryPoints = [
 	'vs/workbench/contrib/debug/node/telemetryApp',
 	'vs/platform/files/node/watcher/watcherMain',
 	'vs/platform/localTranscription/node/localTranscriptionMain',
+	'vs/workbench/contrib/anden/node/andenAgentMain',
 	'vs/platform/terminal/node/ptyHostMain',
 	'vs/platform/agentHost/node/agentHostMain',
 	'vs/platform/agentHost/node/diffWorkerMain',

@@ -1,0 +1,247 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.anden-workbench {
+	--anden-icon-pi: #b58cff;
+	--anden-icon-codex: #45d4eb;
+	--anden-icon-repository: #ff8a57;
+	--anden-icon-activity: #d3b3f2;
+	--anden-icon-attention: #f6c35b;
+	--anden-icon-error: #ff869b;
+	--anden-icon-ink: #100d14;
+}
+
+.vs .anden-workbench {
+	--anden-icon-pi: #6941a5;
+	--anden-icon-codex: #006b7a;
+	--anden-icon-repository: #a13d16;
+	--anden-icon-activity: #61428c;
+	--anden-icon-attention: #805400;
+	--anden-icon-error: #a12d4a;
+	--anden-icon-ink: #ffffff;
+}
+
+:is(.hc-black, .hc-light) .anden-workbench {
+	--anden-icon-pi: currentColor;
+	--anden-icon-codex: currentColor;
+	--anden-icon-repository: currentColor;
+	--anden-icon-activity: currentColor;
+	--anden-icon-attention: currentColor;
+	--anden-icon-error: currentColor;
+	--anden-icon-ink: var(--vscode-editor-background);
+}
+
+.anden-icon {
+	display: inline-grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	flex: none;
+	vertical-align: text-bottom;
+}
+
+.anden-icon::before {
+	content: '';
+	width: 100%;
+	height: 100%;
+	mask: var(--anden-icon-image) center / contain no-repeat;
+	background-color: currentColor;
+}
+
+.anden-icon:is(.anden-icon-agent-pi, .anden-icon-agent-codex) {
+	width: 20px;
+	height: 20px;
+	border-radius: 5px;
+}
+
+.anden-icon:is(.anden-icon-agent-pi, .anden-icon-agent-codex)::before {
+	width: 14px;
+	height: 14px;
+	background-color: var(--anden-icon-ink);
+}
+
+.anden-icon-agent-pi { background-color: var(--anden-icon-pi); }
+.anden-icon-agent-codex { background-color: var(--anden-icon-codex); }
+.anden-icon-git { color: var(--anden-icon-repository); }
+.anden-icon-chat, .anden-icon-sessions, .anden-icon-status-working { color: var(--anden-icon-activity); }
+.anden-icon-status-waiting, .anden-icon-shield, .anden-icon-question, .anden-icon-conflict { color: var(--anden-icon-attention); }
+.anden-icon-status-error { color: var(--anden-icon-error); }
+.anden-icon-added { color: var(--vscode-gitDecoration-addedResourceForeground); }
+.anden-icon-deleted { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+
+.anden-workbench button.anden-icon-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 26px;
+	min-height: 26px;
+}
+
+.anden-working .anden-icon-status-working { animation: anden-icon-spin 1.4s linear infinite; }
+
+@keyframes anden-icon-spin { to { transform: rotate(360deg); } }
+
+.monaco-reduce-motion .anden-working .anden-icon-status-working { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+	.anden-working .anden-icon-status-working { animation: none; }
+}
+
+.anden-icon-agent-pi {
+	--anden-icon-image: url(./icons/agent-pi.svg);
+}
+
+.anden-icon-agent-codex {
+	--anden-icon-image: url(./icons/agent-codex.svg);
+}
+
+.anden-icon-git {
+	--anden-icon-image: url(./icons/git.svg);
+}
+
+.anden-icon-branch {
+	--anden-icon-image: url(./icons/branch.svg);
+}
+
+.anden-icon-sessions {
+	--anden-icon-image: url(./icons/sessions.svg);
+}
+
+.anden-icon-chat {
+	--anden-icon-image: url(./icons/chat.svg);
+}
+
+.anden-icon-folder {
+	--anden-icon-image: url(./icons/folder.svg);
+}
+
+.anden-icon-status-ready {
+	--anden-icon-image: url(./icons/status-ready.svg);
+}
+
+.anden-icon-status-working {
+	--anden-icon-image: url(./icons/status-working.svg);
+}
+
+.anden-icon-status-waiting {
+	--anden-icon-image: url(./icons/status-waiting.svg);
+}
+
+.anden-icon-status-interrupted {
+	--anden-icon-image: url(./icons/status-interrupted.svg);
+}
+
+.anden-icon-status-error {
+	--anden-icon-image: url(./icons/status-error.svg);
+}
+
+.anden-icon-status-disconnected {
+	--anden-icon-image: url(./icons/status-disconnected.svg);
+}
+
+.anden-icon-status-completed {
+	--anden-icon-image: url(./icons/status-completed.svg);
+}
+
+.anden-icon-new {
+	--anden-icon-image: url(./icons/new.svg);
+}
+
+.anden-icon-more {
+	--anden-icon-image: url(./icons/more.svg);
+}
+
+.anden-icon-rename {
+	--anden-icon-image: url(./icons/rename.svg);
+}
+
+.anden-icon-close {
+	--anden-icon-image: url(./icons/close.svg);
+}
+
+.anden-icon-back {
+	--anden-icon-image: url(./icons/back.svg);
+}
+
+.anden-icon-expand {
+	--anden-icon-image: url(./icons/expand.svg);
+}
+
+.anden-icon-send {
+	--anden-icon-image: url(./icons/send.svg);
+}
+
+.anden-icon-stop {
+	--anden-icon-image: url(./icons/stop.svg);
+}
+
+.anden-icon-latest {
+	--anden-icon-image: url(./icons/latest.svg);
+}
+
+.anden-icon-copy {
+	--anden-icon-image: url(./icons/copy.svg);
+}
+
+.anden-icon-refresh {
+	--anden-icon-image: url(./icons/refresh.svg);
+}
+
+.anden-icon-read {
+	--anden-icon-image: url(./icons/read.svg);
+}
+
+.anden-icon-edit {
+	--anden-icon-image: url(./icons/edit.svg);
+}
+
+.anden-icon-search {
+	--anden-icon-image: url(./icons/search.svg);
+}
+
+.anden-icon-command {
+	--anden-icon-image: url(./icons/command.svg);
+}
+
+.anden-icon-test {
+	--anden-icon-image: url(./icons/test.svg);
+}
+
+.anden-icon-tool {
+	--anden-icon-image: url(./icons/tool.svg);
+}
+
+.anden-icon-shield {
+	--anden-icon-image: url(./icons/shield.svg);
+}
+
+.anden-icon-question {
+	--anden-icon-image: url(./icons/question.svg);
+}
+
+.anden-icon-diff {
+	--anden-icon-image: url(./icons/diff.svg);
+}
+
+.anden-icon-added {
+	--anden-icon-image: url(./icons/added.svg);
+}
+
+.anden-icon-modified {
+	--anden-icon-image: url(./icons/modified.svg);
+}
+
+.anden-icon-deleted {
+	--anden-icon-image: url(./icons/deleted.svg);
+}
+
+.anden-icon-renamed {
+	--anden-icon-image: url(./icons/renamed.svg);
+}
+
+.anden-icon-conflict {
+	--anden-icon-image: url(./icons/conflict.svg);
+}

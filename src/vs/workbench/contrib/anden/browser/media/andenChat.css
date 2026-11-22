@@ -1,0 +1,135 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.anden-workbench .anden-chat:not([hidden]) {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--vscode-editor-background);
+}
+
+.anden-transcript {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+}
+
+.anden-messages, .anden-composer {
+	width: min(100%, 840px);
+	box-sizing: border-box;
+	margin-inline: auto;
+	padding: 16px clamp(12px, 4%, 32px);
+}
+
+.anden-messages {
+	display: grid;
+	gap: 12px;
+}
+
+.anden-chat-empty {
+	display: grid;
+	justify-items: center;
+	padding: 40px 8px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.anden-chat-empty > .anden-icon, .anden-empty > .anden-icon {
+	width: 28px;
+	height: 28px;
+}
+
+.anden-chat-label {
+	margin: 0 0 8px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 14px;
+}
+
+.anden-chat-message, .anden-request, .anden-tool, .anden-chat-notice {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.anden-chat-user-text { white-space: pre-wrap; }
+
+.anden-markdown { line-height: 1.55; }
+.anden-markdown a { color: var(--vscode-textLink-foreground); }
+.anden-markdown table { display: block; max-width: 100%; overflow: auto; border-collapse: collapse; }
+.anden-markdown :is(th, td) { border: 1px solid var(--vscode-widget-border, transparent); padding: 4px 8px; }
+.anden-markdown blockquote { margin-inline: 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--vscode-focusBorder); }
+
+.anden-chat :is(code, pre, .monaco-tokenized-source) {
+	font-family: 'Agave Nerd Font Mono', monospace !important;
+	font-size: 14px !important;
+	font-weight: 500 !important;
+}
+
+.anden-code-block {
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 6px;
+	margin-block: 8px;
+	overflow: hidden;
+}
+
+.anden-chat .anden-code-block :is(pre, .monaco-tokenized-source) {
+	display: block;
+	overflow: auto;
+	margin: 0;
+	padding: 8px 12px;
+	white-space: pre;
+	line-height: 1.5;
+}
+
+.anden-code-toolbar, .anden-chat-activity, .anden-composer-actions, .anden-request-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.anden-code-toolbar { padding: 4px 12px; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
+.anden-composer { border-top: 1px solid var(--vscode-widget-border, transparent); padding-block: 8px 14px; }
+.anden-composer-actions, .anden-request-actions { justify-content: flex-end; }
+.anden-chat-activity { min-height: 26px; }
+.anden-activity-controls { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.anden-chat :is(textarea, input, select) {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: 5px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.anden-chat :is(textarea, input, select, summary):focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.anden-chat-input { resize: vertical; max-height: 35vh; min-height: 48px; margin-block: 6px; }
+.anden-chat button:disabled { opacity: 0.55; cursor: default; }
+.anden-chat [hidden] { display: none !important; }
+
+.anden-request, .anden-tool {
+	padding: 9px 12px;
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 6px;
+	background: var(--vscode-editorWidget-background);
+}
+
+.anden-request { border-inline-start: 2px solid var(--anden-icon-attention); }
+.anden-request-detail, .anden-tool-output { white-space: pre-wrap; max-height: 240px; overflow: auto; }
+.anden-request-field { display: grid; gap: 5px; margin-bottom: 8px; }
+.anden-tool summary { display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none; }
+.anden-tool summary::-webkit-details-marker { display: none; }
+.anden-tool[open] summary > .anden-icon-expand { transform: rotate(90deg); }
+.anden-tool-label { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.anden-tool-feedback { display: block; }
+.anden-chat-notice, .anden-status { display: flex; align-items: center; gap: 6px; }
+.anden-status { font-size: 12px; }
+.anden-status .anden-icon { width: 12px; height: 12px; }

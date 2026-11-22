@@ -161,21 +161,30 @@
 	box-shadow: inset 2px 0 var(--vscode-list-activeSelectionIconForeground, var(--vscode-list-activeSelectionForeground));
 }
 
+.monaco-workbench:is(.hc-black, .hc-light) .anden-workbench .anden-session-row:has([aria-current="true"]) {
+	outline: 1px solid var(--vscode-contrastActiveBorder, currentColor);
+	outline-offset: -1px;
+}
+
 .anden-workbench .anden-session-select {
 	flex: 1;
 	min-width: 0;
 	padding: 6px 8px;
 	text-align: left;
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
 }
 
-.anden-workbench .anden-session-select span {
-	display: block;
-}
+.anden-session-labels { display: grid; min-width: 0; gap: 2px; }
+.anden-session-labels .anden-status { min-height: 16px; }
+.anden-workbench :is(.anden-icon-heading, .anden-session-description h2, .anden-branch, .anden-review-kind) { display: flex; gap: 6px; align-items: center; }
+.anden-workbench :is(.anden-branch, .anden-session-description h2) > span:not(.anden-icon) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anden-workbench :is(.anden-branch, .anden-review-kind) .anden-icon { width: 12px; height: 12px; }
 
 .anden-workbench :is(.anden-session-close, .anden-session-menu) {
-	margin-right: 4px;
-	padding: 0 5px;
-	font-size: 16px;
+	margin-right: 2px;
+	padding: 0 4px;
 }
 
 .anden-workbench :is(.anden-session-close, .anden-session-menu):hover {
@@ -210,16 +219,9 @@
 	min-height: 0;
 }
 
-.anden-workbench .anden-terminal,
 .anden-workbench .anden-empty {
 	position: absolute;
 	inset: 0;
-}
-
-.anden-workbench .anden-terminal {
-	overflow: hidden;
-	/* xterm sets its own glyph font; preserve the inherited font for its auxiliary DOM. */
-	font-family: var(--workbench-system-font-family);
 }
 
 .anden-workbench .anden-session-header:not([hidden]) {
@@ -242,7 +244,7 @@
 
 .anden-workbench button.anden-changes-button {
 	display: inline-flex;
-	align-items: baseline;
+	align-items: center;
 	gap: 6px;
 	font-variant-numeric: tabular-nums;
 }
@@ -345,10 +347,6 @@
 	position: absolute;
 	inset: 0;
 	overflow: hidden;
-}
-
-.anden-workbench .anden-terminal .terminal-wrapper {
-	height: 100%;
 }
 
 .anden-workbench .anden-empty:not([hidden]) {

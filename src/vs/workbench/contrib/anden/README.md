@@ -8,11 +8,17 @@ pnpm run build-fast
 ./scripts/code.sh --new-window
 ```
 
-**New Session** launches Pi or Codex in a selected local folder. The folder opens as the session's working directory, not as a new workbench window. Anden asks before using a folder that is not already trusted. Accept the suggested name (for example, `anden · Pi`) or enter your own. Use the session row’s **…** menu to rename it without restarting the agent. Select a session on the left or press **Cmd+Option+J** on macOS (**Ctrl+Alt+J** elsewhere). Close a session with its **×** button. Only the visible session receives keyboard input; other terminal processes keep running.
+**New Session** launches Pi or Codex in a selected local folder. The folder opens as the session's working directory, not as a new workbench window. Anden asks before using a folder that is not already trusted. Accept the suggested name (for example, `anden · Pi`) or enter your own. Use the session row’s **…** menu to rename it without restarting the agent. Select a session on the left or press **Cmd+Option+J** on macOS (**Ctrl+Alt+J** elsewhere). Close a session with its **×** button. Switching sessions leaves drafts and in-flight turns intact; closing a session stops only its own agent.
 
-If an executable is not found on the shell PATH, add `anden.pi.executablePath` or `anden.codex.executablePath` to the profile's `User/settings.json`. Use an absolute path to a directly executable file. Anden doesn't install the CLIs, sign in for you, or send prompts.
+If an executable is not found on the shell PATH, add `anden.pi.executablePath` or `anden.codex.executablePath` to the profile's `User/settings.json`. Use an absolute path to a directly executable file. Anden doesn't install the CLIs or sign in for you. Use the CLIs' normal authentication and configuration. Anden does not override their tool approval policies or sandbox settings.
 
-Sessions use the existing integrated terminal engine but are not editor tabs or bottom-panel terminals. They are transient: closing or reloading the window does not restore them. **Changes** opens a read-only view of the session’s Git working copy without stopping its terminal. The list compares HEAD to the index for staged files and the index to files on disk for unstaged files. Sessions in the same Git working copy share the branch and change summary; separate Git worktrees are independent. The branch and **Changes** button’s green `+` and red `−` line totals update even while viewing the terminal, when the repository is trusted. The totals compare HEAD to disk, count new text files, and omit binaries. An unavailable or clean total leaves the button labeled **Changes**. Use **Refresh** if a change has not appeared yet and **Back to Terminal** to return to the running agent. The full IDE and GitHub views are not part of this window yet.
+New sessions open as native chats, not terminals. **Enter** sends; **Shift+Enter** inserts a newline. You can draft during a turn, but Anden won't queue or send the draft automatically. **Stop** interrupts the current turn. The transcript shows Markdown, tool results and interactive requests. Trusting the folder is not approval to use a tool. Pi's custom terminal widgets and requests Anden cannot represent are not supported.
+
+The desktop utility process communicates with Pi over RPC (`pi --mode rpc --no-session`) and Codex over App Server stdio (`codex app-server --listen stdio://`, ephemeral threads). The reference versions are Pi 1.5.2 and Codex 0.171.0. Sessions are transient: closing or reloading the window does not restore them.
+
+**Changes** opens a read-only view of the session’s Git working copy without stopping the chat. It compares HEAD to the index for staged files and the index to disk for unstaged files. Sessions in the same working copy share the branch and change summary; separate Git worktrees are independent. The `+` and `−` totals compare HEAD to disk, count new text files, and omit binaries. The button shows **Changes** without numbers when the total is zero or unavailable. **Refresh** reads local state only. **Back to Chat** returns to the same conversation. The full IDE and GitHub views are not part of this window yet.
+
+Anden Icons are original SVG assets bundled with the workbench under [`browser/media/icons/`](browser/media/icons/). They are local to this UI, not a global file icon theme.
 
 On macOS, the main window keeps the native window buttons in the Sessions header and uses the noninteractive areas of the header to move the window. Native tabs or simple fullscreen retain the standard system title bar for compatibility.
 
@@ -30,8 +36,8 @@ pyftsubset 'GoogleSans[GRAD,opsz,wght].ttf' \
   --layout-features='*'
 ```
 
-## Code and terminal font
+## Code font
 
-Anden’s diff and agent terminal surfaces use **Agave Nerd Font Mono**, 14 px, at weight 500 (700 for ANSI bold). The bundled faces are Regular (400) and Bold (700). These surfaces use the Anden font even if the profile specifies another font for VS Code’s standard editor or terminal; the profile itself is not changed.
+Anden’s diff and chat code use **Agave Nerd Font Mono**, 14 px, at weight 500. The bundled faces are Regular (400) and Bold (700). These surfaces use the Anden font even if the profile specifies another font for VS Code’s standard editor or terminal; the profile itself is not changed.
 
 The two `anden-agave-nerd-font-mono-*.woff2` assets in `browser/media` come from `AgaveNerdFontMono-{Regular,Bold}.ttf` in the [Nerd Fonts v3.5.1 Agave archive](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/Agave.tar.xz). They were converted with FontTools 4.62.1 and Brotli 1.2.0 (`TTFont` with `recalcTimestamp=False`, saved with `flavor='woff2'`) without subsetting so the Nerd Font icons remain available. The distribution includes the [OFL license](../../../../../licenses/agave-nerd-font-OFL.txt) and [upstream glyph notices](../../../../../licenses/agave-nerd-font-notices.md).
