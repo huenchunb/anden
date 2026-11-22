@@ -53,6 +53,7 @@
     "*",
     "onEditSession:file",
     "onCommand:_git.anden.openReview",
+    "onCommand:_git.anden.watchRepository",
     "onFileSystem:git",
     "onFileSystem:git-show"
   ],

@@ -709,11 +709,11 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 		commands.executeCommand('setContext', 'git.activeResourceHasMergeConflicts', hasMergeConflicts);
 	}
 
-	/**
-	 * @param isWarm Whether the repository opens hidden, as a warm repository of a location that a folder switched to.
-	 */
+	private readonly sessionOnlyRepositories = new WeakSet<Repository>();
+
+	/** Open a session's repository without changing the window workspace. */
 	@sequentialize
-	async openSessionRepository(folder: Uri): Promise<Repository | 'notRepository' | 'unsafe' | 'untrusted' | 'unavailable'> {
+	async openSessionRepository(folder: Uri, interactive: boolean): Promise<Repository | 'notRepository' | 'unsafe' | 'untrusted' | 'unavailable'> {
 		if (!await workspace.isResourceTrusted(folder)) {
 			return 'untrusted';
 		}
@@ -731,8 +731,9 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 		}
 		const root = Uri.file(result.repositoryRoot);
 		const dotGit = await this.git.getRepositoryDotGit(root.fsPath);
-		for (const uri of [root, Uri.file(path.dirname(dotGit.commonPath ?? dotGit.path))]) {
-			if (!await workspace.requestResourceTrust({ uri })) {
+		for (const uri of [root, Uri.file(path.dirname(dotGit.commonPath ?? dotGit.path)), Uri.file(path.dirname(dotGit.path))]) {
+			const trusted = interactive ? await workspace.requestResourceTrust({ uri }) : await workspace.isResourceTrusted(uri);
+			if (!trusted) {
 				return 'untrusted';
 			}
 		}
@@ -740,10 +741,21 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 		return await this.getRepositoryExact(root.fsPath) ?? 'unavailable';
 	}
 
+	/** Leave repositories that were already open in the Git model alone. */
+	releaseSessionRepository(repository: Repository): void {
+		if (this.sessionOnlyRepositories.delete(repository)) {
+			this.disposeRepository(repository);
+		}
+	}
+
+	/** @param isWarm Whether to open hidden for a workspace folder's inactive location. */
 	async openRepository(repoPath: string, openIfClosed = false, openIfParent = false, isWarm = false, localOnly = false): Promise<void> {
 		this.logger.trace(`[Model][openRepository] Repository: ${repoPath}`);
 		const existingRepository = await this.getRepositoryExact(repoPath);
 		if (existingRepository) {
+			if (!localOnly) {
+				this.sessionOnlyRepositories.delete(existingRepository);
+			}
 			this.logger.trace(`[Model][openRepository] Repository for path ${repoPath} already exists: ${existingRepository.root}`);
 			return;
 		}
@@ -762,6 +774,9 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 
 			const existingRepository = await this.getRepositoryExact(repositoryRoot);
 			if (existingRepository) {
+				if (!localOnly) {
+					this.sessionOnlyRepositories.delete(existingRepository);
+				}
 				this.logger.trace(`[Model][openRepository] Repository for path ${repositoryRoot} already exists: ${existingRepository.root}`);
 				return;
 			}
@@ -816,9 +831,10 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 
 			// Check that the folder containing the .git folder is trusted
 			const dotGitPath = dotGit.commonPath ?? dotGit.path;
-			const result = await workspace.requestResourceTrust({
+			const trustUri = Uri.file(path.dirname(dotGitPath));
+			const result = localOnly ? await workspace.isResourceTrusted(trustUri) : await workspace.requestResourceTrust({
 				message: l10n.t('You are opening a repository from a location that is not trusted. Do you trust the authors of the files in the repository you are opening?'),
-				uri: Uri.file(path.dirname(dotGitPath)),
+				uri: trustUri,
 			} satisfies ResourceTrustRequestOptions);
 
 			if (!result) {
@@ -830,6 +846,9 @@ export class Model implements IRepositoryResolver, IBranchProtectionProviderRegi
 			const gitRepository = this.git.open(repositoryRoot, repositoryRootRealPath, dotGit, this.logger);
 			const repository = new Repository(gitRepository, this, this, this, this, this, this, this.globalState, this.logger, this.telemetryReporter, this._repositoryCache, isWarm, localOnly);
 
+			if (localOnly) {
+				this.sessionOnlyRepositories.add(repository);
+			}
 			this.open(repository, localOnly);
 			this._closedRepositoriesManager.deleteRepository(repository.root);
 

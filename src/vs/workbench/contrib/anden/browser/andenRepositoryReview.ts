@@ -55,6 +55,8 @@ interface ReviewSnapshot {
 }
 export interface IAndenReviewState {
 	readonly folder: URI;
+	readonly sessionId: string;
+	readonly whenWatching: Promise<unknown>;
 	entry?: string;
 	viewState?: IDiffEditorViewState;
 }
@@ -88,7 +90,6 @@ export class AndenRepositoryReview extends Disposable {
 
 	constructor(
 		private readonly container: HTMLElement,
-		private readonly updateCount: (count: number | undefined) => void,
 		@ICommandService private readonly commands: ICommandService,
 		@IInstantiationService instantiation: IInstantiationService,
 		@IModelService private readonly modelService: IModelService,
@@ -133,7 +134,6 @@ export class AndenRepositoryReview extends Disposable {
 			const root = this.root;
 			if (state && root && (!(await trust.getUriTrustInfo(state.folder)).trusted || !(await trust.getUriTrustInfo(root)).trusted) && this.state === state) {
 				this.show(undefined);
-				this.updateCount(undefined);
 				this.state = state;
 				this.container.hidden = false;
 				this.setStatus(localize('reviewTrustRequired', 'Trust the repository to review its changes.'));
@@ -188,7 +188,11 @@ export class AndenRepositoryReview extends Disposable {
 		try {
 			let entries: readonly ReviewEntry[];
 			if (!this.root) {
-				const result = await this.commands.executeCommand<ReviewSnapshot>('_git.anden.openReview', state.folder);
+				await state.whenWatching;
+				if (version !== this.statusVersion) {
+					return;
+				}
+				const result = await this.commands.executeCommand<ReviewSnapshot>('_git.anden.openReview', state.sessionId);
 				if (version !== this.statusVersion) {
 					return;
 				}
@@ -202,7 +206,6 @@ export class AndenRepositoryReview extends Disposable {
 						unsafe: localize('reviewUnsafe', 'Git refused to open this repository because of its ownership.'),
 					};
 					this.setStatus(messages[result?.status ?? 'unavailable']);
-					this.updateCount(undefined);
 					return;
 				}
 				this.root = URI.parse(result.root);
@@ -219,14 +222,12 @@ export class AndenRepositoryReview extends Disposable {
 					this.entries = [];
 					this.renderFiles();
 					this.clearDiff();
-					this.updateCount(undefined);
 					this.setStatus(localize('reviewRepositoryClosed', 'The repository is no longer available.'));
 					return;
 				}
 				entries = result;
 			}
 			const count = new Set(entries.map(entry => entry.path)).size;
-			this.updateCount(count);
 			this.title.title = this.root.fsPath;
 			this.title.textContent = localize('repositoryChangesCount', 'Repository Changes · {0}', count);
 			this.setStatus(count ? this.root.fsPath : localize('reviewClean', 'No changes in {0}', this.root.fsPath));
@@ -251,7 +252,6 @@ export class AndenRepositoryReview extends Disposable {
 				this.entries = [];
 				this.renderFiles();
 				this.clearDiff();
-				this.updateCount(undefined);
 				this.setStatus(localize('reviewError', 'Could not read repository changes. Check the Git log or try refreshing.'));
 			}
 		}

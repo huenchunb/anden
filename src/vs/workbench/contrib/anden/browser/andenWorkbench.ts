@@ -4,7 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { getZoomFactor, isFullscreen, onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../../base/browser/browser.js';
-import { $, append, getWindow, getWindowId } from '../../../../base/browser/dom.js';
+import { $, append, clearNode, getWindow, getWindowId } from '../../../../base/browser/dom.js';
+import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+import { toAction } from '../../../../base/common/actions.js';
 import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
@@ -14,10 +16,12 @@ import { isAbsolute, delimiter, join } from '../../../../base/common/path.js';
 import { isWindows } from '../../../../base/common/platform.js';
 import { basename } from '../../../../base/common/resources.js';
 import { URI } from '../../../../base/common/uri.js';
+import { generateUuid } from '../../../../base/common/uuid.js';
 import { localize } from '../../../../nls.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
+import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
@@ -34,6 +38,8 @@ import { IWorkspaceTrustRequestService } from '../../../../platform/workspace/co
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { ITerminalInstance, ITerminalInstanceService, ITerminalService } from '../../terminal/browser/terminal.js';
 import { SessionList } from '../common/sessionList.js';
+import { suggestSessionName } from '../common/sessionName.js';
+import { AndenRepositoryContext, IAndenRepositorySummary } from './andenRepositoryContext.js';
 import { AndenRepositoryReview, IAndenReviewState } from './andenRepositoryReview.js';
 import { andenCodeFont, loadAndenCodeFont } from './andenTypography.js';
 import './media/andenWorkbench.css';
@@ -74,25 +80,31 @@ if (product.andenSessionWorkbench) {
 
 interface Session {
 	readonly terminal: ITerminalInstance;
-	readonly label: string;
+	label: string;
+	readonly agent: Agent;
 	readonly folder: URI;
 	readonly surface: HTMLElement;
 	readonly selectButton: HTMLButtonElement;
+	readonly nameLabel: HTMLElement;
+	readonly branchLabel: HTMLElement;
+	readonly menuButton: HTMLButtonElement;
+	readonly closeButton: HTMLButtonElement;
 	readonly disposables: DisposableStore;
 	readonly review: IAndenReviewState;
 	showReview: boolean;
-	changeCount?: number;
+	repository?: IAndenRepositorySummary;
 }
 
 /** Owns the session navigation and terminal surfaces for one Anden desktop window. */
 export class AndenWorkbench extends Disposable {
 	private readonly sessions = new SessionList<Session>();
-	private readonly counts = new Map<Agent['id'], number>();
+	private readonly repositoryContext: AndenRepositoryContext;
 	private readonly list: HTMLElement;
 	private readonly content: HTMLElement;
 	private readonly header: HTMLElement;
 	private readonly heading: HTMLElement;
 	private readonly folderLabel: HTMLElement;
+	private readonly branchLabel: HTMLElement;
 	private readonly empty: HTMLElement;
 	private readonly newButton: HTMLButtonElement;
 	private readonly review: AndenRepositoryReview;
@@ -109,6 +121,7 @@ export class AndenWorkbench extends Disposable {
 		@ITerminalService private readonly terminals: ITerminalService,
 		@ITerminalInstanceService private readonly terminalInstances: ITerminalInstanceService,
 		@IQuickInputService private readonly quickInput: IQuickInputService,
+		@IContextMenuService private readonly contextMenu: IContextMenuService,
 		@IFileDialogService private readonly dialogs: IFileDialogService,
 		@IFileService private readonly files: IFileService,
 		@IWorkspaceTrustRequestService private readonly trust: IWorkspaceTrustRequestService,
@@ -120,6 +133,7 @@ export class AndenWorkbench extends Disposable {
 		@IInstantiationService instantiation: IInstantiationService,
 	) {
 		super();
+		this.repositoryContext = this._register(instantiation.createInstance(AndenRepositoryContext));
 		const root = $('div.anden-workbench');
 		container.classList.add('anden-session-window');
 		container.prepend(root);
@@ -135,17 +149,14 @@ export class AndenWorkbench extends Disposable {
 		const description = append(this.header, $('div.anden-session-description'));
 		this.heading = append(description, $('h2'));
 		this.folderLabel = append(description, $('div.anden-folder'));
+		this.branchLabel = append(description, $('div.anden-branch'));
+		this.branchLabel.hidden = true;
 		this.changesButton = append(this.header, $<HTMLButtonElement>('button.anden-changes-button', { type: 'button' }));
 		this.changesButton.onclick = () => this.toggleReview();
 		this.content = append(main, $('div.anden-session-content'));
 		const reviewContainer = append(this.content, $('div.anden-review'));
 		reviewContainer.hidden = true;
-		this.review = this._register(instantiation.createInstance(AndenRepositoryReview, reviewContainer, count => {
-			if (this.selected?.showReview) {
-				this.selected.changeCount = count;
-				this.updateChangesButton();
-			}
-		}));
+		this.review = this._register(instantiation.createInstance(AndenRepositoryReview, reviewContainer));
 		this.empty = append(this.content, $('div.anden-empty'));
 		append(this.empty, $('h2', {}, localize('noSession', "No open session")));
 		append(this.empty, $('p', {}, localize('startSession', "Start Pi or Codex in a folder of your choice.")));
@@ -228,7 +239,12 @@ export class AndenWorkbench extends Disposable {
 				return;
 			}
 			const folder = await this.pickFolder();
-			if (!folder || !await this.trust.requestResourcesTrust({ uri: folder })) {
+			if (!folder) {
+				return;
+			}
+			const suggested = suggestSessionName(basename(folder) || folder.fsPath, agent.label, [...this.sessions.values()].map(session => session.label));
+			const label = await this.inputSessionName(suggested, false);
+			if (!label || !await this.trust.requestResourcesTrust({ uri: folder })) {
 				return;
 			}
 			const executable = await this.findExecutable(agent);
@@ -240,8 +256,6 @@ export class AndenWorkbench extends Disposable {
 			if (this._store.isDisposed) {
 				return;
 			}
-			const count = (this.counts.get(agent.id) ?? 0) + 1;
-			const label = localize('sessionName', "{0} · {1}", agent.label, count);
 			const terminal = await this.terminals.createTerminal({
 				config: { executable, args: [], cwd: folder, name: label, hideFromUser: true, isTransient: true, useShellEnvironment: true, fontOverride: andenCodeFont },
 				location: TerminalLocation.Panel,
@@ -250,8 +264,7 @@ export class AndenWorkbench extends Disposable {
 				terminal.dispose();
 				return;
 			}
-			this.counts.set(agent.id, count);
-			this.addSession(terminal, label, folder);
+			this.addSession(terminal, label, agent, folder);
 		} catch (error) {
 			this.notifications.error(error);
 		} finally {
@@ -289,20 +302,56 @@ export class AndenWorkbench extends Disposable {
 		return undefined;
 	}
 
-	private addSession(terminal: ITerminalInstance, label: string, folder: URI): void {
+	private async inputSessionName(value: string, renaming: boolean): Promise<string | undefined> {
+		return (await this.quickInput.input({
+			title: renaming ? localize('renameSessionTitle', 'Rename Session') : localize('sessionNameTitle', 'Session Name'),
+			prompt: localize('sessionNamePrompt', 'Enter a name for this session.'),
+			value,
+			validateInput: async input => input.trim() ? undefined : localize('emptySessionName', 'Enter a non-empty session name.'),
+		}))?.trim();
+	}
+
+	private addSession(terminal: ITerminalInstance, label: string, agent: Agent, folder: URI): void {
 		const row = append(this.list, $('li.anden-session-row'));
-		const selectButton = append(row, $<HTMLButtonElement>('button.anden-session-select', { type: 'button', title: folder.fsPath },
-			$('span', {}, label), $('span.anden-folder', {}, basename(folder) || folder.fsPath)));
-		const closeButton = append(row, $('button.anden-session-close', { type: 'button', 'aria-label': localize('closeSession', "Close {0}", label) }, '×'));
+		const selectButton = append(row, $<HTMLButtonElement>('button.anden-session-select', { type: 'button', title: folder.fsPath }));
+		const nameLabel = append(selectButton, $('span.anden-session-name'));
+		append(selectButton, $('span.anden-folder', {}, localize('sessionAgentFolder', '{0} · {1}', agent.label, basename(folder) || folder.fsPath)));
+		const branchLabel = append(selectButton, $('span.anden-branch'));
+		const menuButton = append(row, $<HTMLButtonElement>('button.anden-session-menu', { type: 'button', 'aria-haspopup': 'menu' }, '…'));
+		const closeButton = append(row, $<HTMLButtonElement>('button.anden-session-close', { type: 'button' }, '×'));
 		const surface = append(this.content, $('div.anden-terminal'));
 		const disposables = new DisposableStore();
-		const session: Session = { terminal, label, folder, surface, selectButton, disposables, review: { folder }, showReview: false };
+		const id = generateUuid();
+		const observation = disposables.add(this.repositoryContext.watch(id, folder, summary => {
+			session.repository = summary;
+			this.renderSessionDetails(session);
+			if (this.selected === session) {
+				this.renderHeader();
+			}
+		}));
+		const session: Session = {
+			terminal, label, agent, folder, surface, selectButton, nameLabel, branchLabel, menuButton, closeButton, disposables,
+			review: { folder, sessionId: id, whenWatching: observation.whenWatching }, showReview: false,
+		};
 		this.sessions.add(session);
+		this.renderSessionDetails(session);
+		const showMenu = (event?: MouseEvent) => {
+			this.contextMenu.showContextMenu({
+				getAnchor: () => event ? new StandardMouseEvent(getWindow(row), event) : menuButton,
+				getActions: () => [toAction({ id: 'anden.renameSession', label: localize('renameSession', 'Rename Session…'), run: () => this.renameSession(session) })],
+			});
+		};
+		menuButton.onclick = () => showMenu();
+		row.oncontextmenu = event => {
+			event.preventDefault();
+			event.stopPropagation();
+			showMenu(event);
+		};
 		disposables.add({ dispose: () => { surface.remove(); row.remove(); } });
 		disposables.add(terminal.onDisposed(() => this.removeSession(session)));
 		disposables.add(terminal.onExit(exit => {
 			if (typeof exit === 'number' && exit !== 0) {
-				this.notifications.error(localize('sessionFailed', "{0} exited with code {1}.", label, exit));
+				this.notifications.error(localize('sessionFailed', "{0} exited with code {1}.", session.label, exit));
 			} else if (typeof exit === 'object') {
 				this.notifications.error(exit.message);
 			}
@@ -313,6 +362,33 @@ export class AndenWorkbench extends Disposable {
 		this.selectSession(session, false);
 		this.layoutSession();
 		void terminal.focusWhenReady(true);
+	}
+
+	private async renameSession(session: Session): Promise<void> {
+		const label = await this.inputSessionName(session.label, true);
+		if (!label || label === session.label || session.disposables.isDisposed) {
+			return;
+		}
+		session.label = label;
+		this.renderSessionDetails(session);
+		if (this.selected === session) {
+			this.renderHeader();
+		}
+		await session.terminal.rename(label);
+	}
+
+	private renderSessionDetails(session: Session): void {
+		session.nameLabel.textContent = session.label;
+		session.menuButton.setAttribute('aria-label', localize('sessionActions', 'Actions for {0}', session.label));
+		session.closeButton.setAttribute('aria-label', localize('closeSession', 'Close {0}', session.label));
+		this.renderBranch(session.branchLabel, session.repository);
+	}
+
+	private renderBranch(element: HTMLElement, repository: IAndenRepositorySummary | undefined): void {
+		const label = repository?.branch ?? (repository?.commit ? localize('detachedHead', 'Detached HEAD · {0}', repository.commit.slice(0, 8)) : '');
+		element.textContent = label;
+		element.title = label;
+		element.hidden = !label;
 	}
 
 	private removeSession(session: Session): void {
@@ -344,9 +420,7 @@ export class AndenWorkbench extends Disposable {
 		}
 		this.empty.hidden = !!this.selected;
 		this.header.hidden = !this.selected;
-		this.heading.textContent = this.selected?.label ?? '';
-		this.folderLabel.textContent = this.selected?.folder.fsPath ?? '';
-		this.updateChangesButton();
+		this.renderHeader();
 		this.review.show(this.selected?.showReview ? this.selected.review : undefined);
 	}
 
@@ -360,11 +434,23 @@ export class AndenWorkbench extends Disposable {
 		this.focus();
 	}
 
-	private updateChangesButton(): void {
+	private renderHeader(): void {
 		const session = this.selected;
-		this.changesButton.textContent = session?.showReview
-			? localize('backToTerminal', 'Back to Terminal')
-			: session?.changeCount === undefined ? localize('changes', 'Changes') : localize('changesCount', 'Changes · {0}', session.changeCount);
+		this.heading.textContent = session?.label ?? '';
+		this.folderLabel.textContent = session ? localize('sessionAgentFolder', '{0} · {1}', session.agent.label, session.folder.fsPath) : '';
+		this.renderBranch(this.branchLabel, session?.repository);
+		const button = this.changesButton;
+		clearNode(button);
+		const label = session?.showReview ? localize('backToTerminal', 'Back to Terminal') : localize('changes', 'Changes');
+		append(button, $('span', {}, label));
+		const lines = session?.showReview ? undefined : session?.repository?.lines;
+		if (lines && (lines.added || lines.deleted)) {
+			append(button, $('span.anden-lines-added', { 'aria-hidden': 'true' }, `+${lines.added}`));
+			append(button, $('span.anden-lines-deleted', { 'aria-hidden': 'true' }, `\u2212${lines.deleted}`));
+			button.setAttribute('aria-label', localize('changesLines', 'Changes: {0} lines added, {1} removed', lines.added, lines.deleted));
+		} else {
+			button.removeAttribute('aria-label');
+		}
 	}
 
 	private layoutSession(): void {
@@ -374,7 +460,7 @@ export class AndenWorkbench extends Disposable {
 	}
 
 	private async pickSession(): Promise<void> {
-		const sessions: (IQuickPickItem & { session: Session })[] = [...this.sessions.values()].map(session => ({ label: session.label, description: session.folder.fsPath, session }));
+		const sessions: (IQuickPickItem & { session: Session })[] = [...this.sessions.values()].map(session => ({ label: session.label, description: localize('sessionAgentFolder', '{0} · {1}', session.agent.label, session.folder.fsPath), detail: session.repository?.branch, session }));
 		const picked = sessions.length === 1 ? sessions[0] : sessions.length ? await this.quickInput.pick(sessions, { placeHolder: localize('pickSession', "Select a session"), matchOnDescription: true }) : undefined;
 		if (picked) {
 			this.selectSession(picked.session);

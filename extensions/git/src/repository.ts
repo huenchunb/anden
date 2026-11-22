@@ -16,6 +16,7 @@ import { ActionButton } from './actionButton';
 import { ApiRepository } from './api/api1';
 import type { Branch, BranchQuery, Change, CommitOptions, DiffChange, FetchOptions, LogOptions, Ref, Remote, RepositoryKind } from './api/git';
 import { ForcePushMode, GitErrorCodes, RefType, Status } from './api/git.constants';
+import { getAndenSummary } from './andenSummary';
 import { AutoFetcher } from './autofetch';
 import { GitBranchProtectionProvider, IBranchProtectionProviderRegistry } from './branchProtection';
 import { debounce, memoize, sequentialize, throttle } from './decorators';
@@ -722,6 +723,7 @@ export class Repository implements Disposable {
 
 	private _onDidChangeRepository = new EventEmitter<Uri>();
 	readonly onDidChangeRepository: Event<Uri> = this._onDidChangeRepository.event;
+	readonly onDidChangeWorkingTree: Event<Uri>;
 
 	private _onDidChangeState = new EventEmitter<RepositoryState>();
 	readonly onDidChangeState: Event<RepositoryState> = this._onDidChangeState.event;
@@ -969,6 +971,7 @@ export class Repository implements Disposable {
 
 		const onRepositoryFileChange = anyEvent(repositoryWatcher.onDidChange, repositoryWatcher.onDidCreate, repositoryWatcher.onDidDelete);
 		const onRepositoryWorkingTreeFileChange = filterEvent(onRepositoryFileChange, uri => !/\.git($|\\|\/)/.test(relativePath(repository.root, uri.fsPath)));
+		this.onDidChangeWorkingTree = onRepositoryWorkingTreeFileChange;
 
 		let onRepositoryDotGitFileChange: Event<Uri>;
 
@@ -1231,6 +1234,10 @@ export class Repository implements Disposable {
 	diffWithHEAD(path?: string | undefined): Promise<string | Change[]>;
 	diffWithHEAD(path?: string | undefined): Promise<string | Change[]> {
 		return this.run(Operation.Diff, () => this.repository.diffWithHEAD(path));
+	}
+
+	getAndenSummary(token: CancellationToken) {
+		return getAndenSummary(this.repository, token);
 	}
 
 	diffWithHEADShortStats(path?: string): Promise<CommitShortStat> {

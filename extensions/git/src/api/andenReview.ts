@@ -7,6 +7,7 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { commands, Disposable, Uri, workspace } from 'vscode';
 import type { GitExtensionImpl } from './extension';
+import { AndenRepositorySubscriptions } from './andenRepositorySubscriptions';
 import { Status } from './git.constants';
 import type { Repository, Resource } from '../repository';
 import { toGitUri } from '../uri';
@@ -47,20 +48,18 @@ export function reviewEntries(repository: ReviewRepository) {
 
 /** Private bridge for Anden's empty-window, read-only repository view. */
 export function registerAndenReviewCommands(extension: GitExtensionImpl): Disposable {
+	const subscriptions = new AndenRepositorySubscriptions(extension);
 	return Disposable.from(
-		commands.registerCommand('_git.anden.openReview', async (folder: Uri) => {
-			if (folder.scheme !== 'file' || !workspace.getConfiguration('git', folder).get<boolean>('enabled')) {
-				return { status: 'disabled' };
-			}
-			const model = extension.model;
-			if (!model) {
-				return { status: 'unavailable' };
-			}
-			const repository = await model.openSessionRepository(folder);
+		subscriptions,
+		commands.registerCommand('_git.anden.watchRepository', (id: string, folder: Uri) => subscriptions.watch(id, folder)),
+		commands.registerCommand('_git.anden.unwatchRepository', (id: string) => subscriptions.unwatch(id)),
+		commands.registerCommand('_git.anden.openReview', async (id: string) => {
+			const repository = await subscriptions.open(id, true);
 			if (typeof repository === 'string') {
 				return { status: repository };
 			}
 			await repository.status();
+			subscriptions.refresh(repository);
 			return { status: 'ready', root: Uri.file(repository.root).toString(), entries: reviewEntries(repository) };
 		}),
 		commands.registerCommand('_git.anden.reviewState', async (root: Uri, refresh: boolean) => {
@@ -70,6 +69,7 @@ export function registerAndenReviewCommands(extension: GitExtensionImpl): Dispos
 			}
 			if (refresh) {
 				await repository.status();
+				subscriptions.refresh(repository);
 			}
 			return reviewEntries(repository);
 		}),

@@ -172,22 +172,29 @@
 	display: block;
 }
 
-.anden-workbench .anden-session-close {
+.anden-workbench :is(.anden-session-close, .anden-session-menu) {
 	margin-right: 4px;
 	padding: 0 5px;
 	font-size: 16px;
 }
 
-.anden-workbench .anden-session-close:hover {
+.anden-workbench :is(.anden-session-close, .anden-session-menu):hover {
 	background: var(--vscode-toolbar-hoverBackground);
 }
 
-.anden-workbench .anden-folder {
-	font-size: 12px;
-	opacity: 0.8;
+.anden-workbench :is(.anden-session-name, .anden-folder, .anden-branch) {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.anden-workbench :is(.anden-folder, .anden-branch) {
+	font-size: 12px;
+	opacity: 0.8;
+}
+
+.anden-workbench .anden-branch[hidden] {
+	display: none;
 }
 
 .anden-workbench .anden-main {
@@ -231,6 +238,21 @@
 	padding: 4px 8px;
 	border-color: var(--vscode-widget-border, transparent);
 	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.anden-workbench button.anden-changes-button {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.anden-workbench .anden-lines-added {
+	color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.anden-workbench .anden-lines-deleted {
+	color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
 .anden-workbench .anden-review:not([hidden]) {
